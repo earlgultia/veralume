@@ -1,0 +1,130 @@
+{
+  "source": "migration_sources",
+  "output": "assets\\data\\veralume.db",
+  "stats": {
+    "versions": 8,
+    "books": 528,
+    "chapters": 9512,
+    "verses": 248314
+  },
+  "integrity": "ok",
+  "inspected": [
+    {
+      "file": "bible_ceb_balaan.json",
+      "meta": {
+        "language": "Cebuano",
+        "version": "Balaan nga Bibliya",
+        "code": "ceb_balaan",
+        "title": "BISAYA - BALAAN NGA BIBLIYA",
+        "abbreviation": "BNB",
+        "license": "CC BY-SA 4.0; Copyright © 2019 Door43 World Missions Community",
+        "source_url": "https://ebible.org/cebulb/copyright.htm"
+      },
+      "books": 66,
+      "approved": true,
+      "validation_errors": []
+    },
+    {
+      "file": "bible_ceb_bugna.json",
+      "meta": {
+        "language": "Cebuano",
+        "version": "BISAYA - CEBBUGNA",
+        "code": "ceb_bugna",
+        "title": "BISAYA - CEBBUGNA",
+        "abbreviation": "CebBugna",
+        "license": "Public domain; Cebuano Ang Biblia, Bugna Version (1917)",
+        "source": "C:\\Users\\miles\\Desktop\\mysword_1\\bibles\\cebbugna.bbl.mybible",
+        "source_details": "Cebuano Ang Biblia, Bugna Version"
+      },
+      "books": 66,
+      "approved": true,
+      "validation_errors": []
+    },
+    {
+      "file": "bible_ceb_mbb.json",
+      "meta": {
+        "language": "Cebuano",
+        "version": "BISAYA - MBB-CEB",
+        "code": "ceb_mbb",
+        "title": "BISAYA - MBB-CEB",
+        "abbreviation": "MBB-CEB",
+        "license": "CC BY-ND 4.0; Copyright © 1999 Philippine Bible Society",
+        "source": "C:\\Users\\miles\\Desktop\\mysword_1\\bibles\\mbb-ceb.bbl.mybible",
+        "source_details": "Maayong Balita Biblia"
+      },
+      "books": 66,
+      "approved": true,
+      "validation_errors": []
+    },
+    {
+      "file": "bible_ceb_open_apd.json",
+      "meta": {
+        "language": "Cebuano",
+        "version": "Biblica Open Ang Pulong sa Dios",
+        "code": "ceb_open_apd",
+        "title": "BISAYA - OPEN ANG PULONG SA DIOS",
+        "abbreviation": "APD",
+        "license": "CC BY-SA 4.0; Copyright © 2009, 2010, 2014, 2024 Biblica, Inc.",
+        "source_url": "https://ebible.org/cebocb/copyright.htm"
+      },
+      "books": 66,
+      "approved": true,
+      "validation_errors": []
+    },
+    {
+      "file": "bible_en_esv.json",
+      "meta": {
+        "language": "English",
+        "version": "ASV",
+        "code": "en_asv",
+        "title": "English ASV",
+        "notes": "Public domain text imported from bibleapi-bibles-json ASV."
+      },
+      "books": 66,
+      "approved": true,
+      "validation_errors": []
+    },
+    {
+      "file": "bible_en_niv.json",
+      "meta": {
+        "language": "English",
+        "version": "KJV",
+        "code": "en_kjv",
+        "title": "English KJV",
+        "notes": "Public domain text imported from bibleapi-bibles-json KJV."
+      },
+      "books": 66,
+      "approved": true,
+      "validation_errors": []
+    },
+    {
+      "file": "bible_tl_mbbtag.json",
+      "meta": {
+        "language": "Tagalog",
+        "version": "Ang Biblia",
+        "code": "tl_ang_biblia",
+        "title": "Tagalog Ang Biblia",
+        "notes": "Public domain text imported from seven1m/open-bibles tgl-tagalog.osis.xml."
+      },
+      "books": 66,
+      "approved": true,
+      "validation_errors": []
+    },
+    {
+      "file": "bible_tl_open_asnd.json",
+      "meta": {
+        "language": "Tagalog",
+        "version": "Biblica Open Ang Salita ng Diyos 2025",
+        "code": "tl_open_asnd",
+        "title": "TAGALOG - OPEN ANG SALITA NG DIYOS",
+        "abbreviation": "ASND",
+        "license": "CC BY-SA 4.0; Copyright © 2009, 2011, 2014, 2025 Biblica, Inc.",
+        "source_url": "https://www.open.bible/bibles/biblica-open-tagalog-contemporary-bible-2025"
+      },
+      "books": 66,
+      "approved": true,
+      "validation_errors": []
+    }
+  ],
+  "excluded_reason": "No verified full-text redistribution permission"
+}

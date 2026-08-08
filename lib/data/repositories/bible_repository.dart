@@ -1,0 +1,276 @@
+import 'package:sqflite/sqflite.dart';
+import '../database/app_database.dart';
+import '../models/bible_models.dart';
+
+class BibleRepository {
+  BibleRepository({AppDatabase? database})
+    : _database = database ?? AppDatabase.instance,
+      _connection = null;
+  BibleRepository.withConnection(this._connection)
+    : _database = AppDatabase.instance;
+  final AppDatabase _database;
+  final Database? _connection;
+  Future<Database> get _db async => _connection ?? await _database.database;
+
+  Future<List<BibleVersion>> versions() async => (await (await _db).query(
+    'bible_versions',
+    orderBy: 'id',
+  )).map(BibleVersion.fromMap).toList();
+  Future<List<BibleBook>> books(int versionId) async =>
+      (await (await _db).query(
+        'books',
+        where: 'version_id=?',
+        whereArgs: [versionId],
+        orderBy: 'book_order',
+      )).map(BibleBook.fromMap).toList();
+  Future<int> chapterCount(int bookId) async =>
+      Sqflite.firstIntValue(
+        await (await _db).rawQuery(
+          'SELECT count(*) FROM chapters WHERE book_id=?',
+          [bookId],
+        ),
+      ) ??
+      0;
+
+  Future<int?> equivalentBook(int bookId, int targetVersionId) async {
+    final rows = await (await _db).rawQuery(
+      'SELECT target.id FROM books source JOIN books target ON target.book_order=source.book_order WHERE source.id=? AND target.version_id=? LIMIT 1',
+      [bookId, targetVersionId],
+    );
+    return rows.isEmpty ? null : rows.first['id'] as int;
+  }
+
+  static const _select =
+      '''SELECT v.*, b.name book_name, bv.abbreviation version_abbreviation FROM verses v JOIN books b ON b.id=v.book_id JOIN bible_versions bv ON bv.id=v.version_id''';
+  Future<List<BibleVerse>> chapter(
+    int bookId,
+    int chapter,
+  ) async => (await (await _db).rawQuery(
+    '$_select WHERE v.book_id=? AND v.chapter_number=? ORDER BY v.verse_number',
+    [bookId, chapter],
+  )).map(BibleVerse.fromMap).toList();
+  Future<BibleVerse?> verse(int id) async {
+    final rows = await (await _db).rawQuery('$_select WHERE v.id=?', [id]);
+    return rows.isEmpty ? null : BibleVerse.fromMap(rows.first);
+  }
+
+  Future<List<BibleVerse>> randomVerses(
+    int versionId, {
+    int limit = 80,
+  }) async => (await (await _db).rawQuery(
+    '$_select WHERE v.version_id=? ORDER BY random() LIMIT ?',
+    [versionId, limit],
+  )).map(BibleVerse.fromMap).toList();
+
+  Future<List<BibleVerse>> search(
+    String query, {
+    int? versionId,
+    int? bookId,
+  }) async {
+    final term = query.trim().replaceAll('"', ' ');
+    if (term.isEmpty) return [];
+    final filters = <String>['verses_fts MATCH ?'];
+    final args = <Object?>['"$term"'];
+    if (versionId != null) {
+      filters.add('v.version_id=?');
+      args.add(versionId);
+    }
+    if (bookId != null) {
+      filters.add('v.book_id=?');
+      args.add(bookId);
+    }
+    return (await (await _db).rawQuery(
+      '$_select JOIN verses_fts ON verses_fts.rowid=v.id WHERE ${filters.join(' AND ')} ORDER BY bm25(verses_fts) LIMIT 200',
+      args,
+    )).map(BibleVerse.fromMap).toList();
+  }
+
+  Future<BibleVerse> dailyVerse(DateTime date) async {
+    final count = Sqflite.firstIntValue(
+      await (await _db).rawQuery(
+        'SELECT count(*) FROM verses WHERE version_id=1',
+      ),
+    )!;
+    final offset = (date.year * 372 + date.month * 31 + date.day) % count;
+    return BibleVerse.fromMap(
+      (await (await _db).rawQuery(
+        '$_select WHERE v.version_id=1 ORDER BY v.id LIMIT 1 OFFSET ?',
+        [offset],
+      )).first,
+    );
+  }
+
+  Future<void> addHistory(int verseId) async =>
+      (await _db).insert('reading_history', {
+        'verse_id': verseId,
+        'accessed_at': DateTime.now().toUtc().toIso8601String(),
+      });
+  Future<List<BibleVerse>> history() async => (await (await _db).rawQuery(
+    '$_select JOIN (SELECT verse_id,max(accessed_at) last FROM reading_history GROUP BY verse_id ORDER BY last DESC LIMIT 20) h ON h.verse_id=v.id ORDER BY h.last DESC',
+  )).map(BibleVerse.fromMap).toList();
+  Future<void> clearHistory() async => (await _db).delete('reading_history');
+  Future<void> toggleBookmark(int verseId) async {
+    final db = await _db;
+    final n = await db.delete(
+      'bookmarks',
+      where: 'verse_id=?',
+      whereArgs: [verseId],
+    );
+    if (n == 0) {
+      await db.insert('bookmarks', {
+        'verse_id': verseId,
+        'created_at': DateTime.now().toUtc().toIso8601String(),
+      });
+    }
+  }
+
+  Future<void> toggleBookmarks(Iterable<int> verseIds) async {
+    final db = await _db;
+    await db.transaction((txn) async {
+      final now = DateTime.now().toUtc().toIso8601String();
+      for (final verseId in verseIds) {
+        final removed = await txn.delete(
+          'bookmarks',
+          where: 'verse_id=?',
+          whereArgs: [verseId],
+        );
+        if (removed == 0) {
+          await txn.insert('bookmarks', {
+            'verse_id': verseId,
+            'created_at': now,
+          });
+        }
+      }
+    });
+  }
+
+  Future<bool> isBookmarked(int verseId) async => (await (await _db).query(
+    'bookmarks',
+    where: 'verse_id=?',
+    whereArgs: [verseId],
+    limit: 1,
+  )).isNotEmpty;
+  Future<List<BibleVerse>> bookmarks({String query = ''}) async {
+    final term = query.trim();
+    final where = term.isEmpty ? '' : ' WHERE v.text LIKE ? OR b.name LIKE ?';
+    final args = term.isEmpty ? <Object?>[] : ['%$term%', '%$term%'];
+    return (await (await _db).rawQuery(
+      '$_select JOIN bookmarks x ON x.verse_id=v.id$where ORDER BY x.created_at DESC',
+      args,
+    )).map(BibleVerse.fromMap).toList();
+  }
+
+  Future<void> setHighlight(int verseId, String? color) async {
+    final db = await _db;
+    if (color == null) {
+      await db.delete('highlights', where: 'verse_id=?', whereArgs: [verseId]);
+    } else {
+      await db.insert('highlights', {
+        'verse_id': verseId,
+        'color': color,
+        'created_at': DateTime.now().toUtc().toIso8601String(),
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    }
+  }
+
+  Future<void> setHighlights(Iterable<int> verseIds, String? color) async {
+    final db = await _db;
+    await db.transaction((txn) async {
+      final now = DateTime.now().toUtc().toIso8601String();
+      for (final verseId in verseIds) {
+        if (color == null) {
+          await txn.delete(
+            'highlights',
+            where: 'verse_id=?',
+            whereArgs: [verseId],
+          );
+        } else {
+          await txn.insert('highlights', {
+            'verse_id': verseId,
+            'color': color,
+            'created_at': now,
+          }, conflictAlgorithm: ConflictAlgorithm.replace);
+        }
+      }
+    });
+  }
+
+  Future<List<SavedVerse>> highlights() async {
+    final rows = await (await _db).rawQuery(
+      '''SELECT h.id saved_id,h.color,h.created_at,v.*,
+         b.name book_name,bv.abbreviation version_abbreviation
+         FROM highlights h JOIN verses v ON v.id=h.verse_id
+         JOIN books b ON b.id=v.book_id
+         JOIN bible_versions bv ON bv.id=v.version_id
+         ORDER BY h.created_at DESC''',
+    );
+    return rows
+        .map(
+          (m) => SavedVerse(
+            id: m['saved_id'] as int,
+            verse: BibleVerse.fromMap(m),
+            color: m['color'] as String,
+            createdAt: DateTime.parse(m['created_at'] as String),
+          ),
+        )
+        .toList();
+  }
+
+  Future<Map<int, String>> highlightsForChapter(
+    int bookId,
+    int chapter,
+  ) async => {
+    for (final r in await (await _db).rawQuery(
+      'SELECT h.verse_id,h.color FROM highlights h JOIN verses v ON v.id=h.verse_id WHERE v.book_id=? AND v.chapter_number=?',
+      [bookId, chapter],
+    ))
+      r['verse_id'] as int: r['color'] as String,
+  };
+  Future<void> saveNote(int verseId, String content, {int? id}) async {
+    final db = await _db;
+    final now = DateTime.now().toUtc().toIso8601String();
+    if (id == null) {
+      await db.insert('notes', {
+        'verse_id': verseId,
+        'content': content,
+        'created_at': now,
+        'updated_at': now,
+      });
+    } else {
+      await db.update(
+        'notes',
+        {'content': content, 'updated_at': now},
+        where: 'id=?',
+        whereArgs: [id],
+      );
+    }
+  }
+
+  Future<void> deleteNote(int id) async =>
+      (await _db).delete('notes', where: 'id=?', whereArgs: [id]);
+  Future<List<SavedVerse>> notes({String query = ''}) async {
+    final term = query.trim();
+    final where = term.isEmpty
+        ? ''
+        : ' WHERE n.content LIKE ? OR v.text LIKE ? OR b.name LIKE ?';
+    final args = term.isEmpty ? <Object?>[] : ['%$term%', '%$term%', '%$term%'];
+    return (await (await _db).rawQuery(
+          '''SELECT n.id note_id,n.content,n.created_at,v.*,
+             b.name book_name,bv.abbreviation version_abbreviation
+             FROM notes n JOIN verses v ON v.id=n.verse_id
+             JOIN books b ON b.id=v.book_id
+             JOIN bible_versions bv ON bv.id=v.version_id
+             $where ORDER BY n.updated_at DESC''',
+          args,
+        ))
+        .map(
+          (m) => SavedVerse(
+            id: m['note_id'] as int,
+            verse: BibleVerse.fromMap(m),
+            content: m['content'] as String,
+            createdAt: DateTime.parse(m['created_at'] as String),
+          ),
+        )
+        .toList();
+  }
+}

@@ -1,0 +1,48 @@
+name: Build unsigned iOS IPA
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-ios:
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out Veralume
+        uses: actions/checkout@v4
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Validate project
+        run: |
+          flutter analyze
+          flutter test
+
+      - name: Build unsigned iOS application
+        run: flutter build ios --release --no-codesign
+
+      - name: Package unsigned IPA
+        run: |
+          cd build/ios/iphoneos
+          mkdir Payload
+          cp -R Runner.app Payload/Runner.app
+          zip -qry Veralume-unsigned.ipa Payload
+
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: Veralume-unsigned-ipa
+          path: build/ios/iphoneos/Veralume-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 7
