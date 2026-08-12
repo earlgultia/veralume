@@ -82,6 +82,71 @@ class BibleRepository {
     return rows.isEmpty ? null : BibleVerse.fromMap(rows.first);
   }
 
+  /// Returns one verse by its stable Bible coordinates. This keeps features
+  /// such as Verse Lens and Give Me a Verse independent of database ids,
+  /// which differ between translations.
+  Future<BibleVerse?> verseAt({
+    required int versionId,
+    required int bookOrder,
+    required int chapter,
+    required int number,
+  }) async {
+    final rows = await (await _db).rawQuery(
+      '$_select WHERE v.version_id=? AND b.book_order=? AND v.chapter_number=? AND v.verse_number=? LIMIT 1',
+      [versionId, bookOrder, chapter, number],
+    );
+    return rows.isEmpty ? null : BibleVerse.fromMap(rows.first);
+  }
+
+  /// Context deliberately remains in the current chapter. It is predictable,
+  /// avoids invalid boundary references, and keeps the reader lightweight.
+  Future<List<BibleVerse>> contextFor(BibleVerse selected, int count) async {
+    final verses = await chapter(selected.bookId, selected.chapter);
+    if (verses.isEmpty) return [];
+    final selectedIndex = verses.indexWhere((verse) => verse.id == selected.id);
+    if (selectedIndex < 0) return [];
+    final wanted = count.clamp(1, 10);
+    var start = selectedIndex - ((wanted - 1) ~/ 2);
+    var end = start + wanted;
+    if (start < 0) {
+      end = (end - start).clamp(0, verses.length);
+      start = 0;
+    }
+    if (end > verses.length) {
+      start = (start - (end - verses.length)).clamp(0, verses.length);
+      end = verses.length;
+    }
+    return verses.sublist(start, end);
+  }
+
+  Future<FocusEntry?> reflectionForVerse(int verseId) async {
+    final rows = await (await _db).rawQuery(
+      '''SELECT n.id entry_id,n.content,n.created_at,n.updated_at,v.*,b.name book_name,bv.abbreviation version_abbreviation
+      FROM notes n JOIN verses v ON v.id=n.verse_id JOIN books b ON b.id=v.book_id JOIN bible_versions bv ON bv.id=v.version_id
+      WHERE n.verse_id=? AND n.type='reflection' ORDER BY n.updated_at DESC LIMIT 1''',
+      [verseId],
+    );
+    if (rows.isEmpty) return null;
+    final row = rows.first;
+    return FocusEntry(
+      id: row['entry_id'] as int,
+      verse: BibleVerse.fromMap(row),
+      content: row['content'] as String,
+      createdAt: DateTime.parse(row['created_at'] as String),
+      updatedAt: DateTime.parse(row['updated_at'] as String),
+    );
+  }
+
+  Future<BibleVerse?> adjacentVerse(BibleVerse verse, int direction) async {
+    final comparator = direction < 0 ? '<' : '>';
+    final order = direction < 0 ? 'DESC' : 'ASC';
+    final rows = await (await _db).rawQuery(
+      '$_select WHERE v.book_id=? AND v.chapter_number=? AND v.verse_number $comparator ? ORDER BY v.verse_number $order LIMIT 1',
+      [verse.bookId, verse.chapter, verse.number],
+    );
+    return rows.isEmpty ? null : BibleVerse.fromMap(rows.first);
+  }
+
   Future<List<BibleVerse>> passageByReference(
     String bookName,
     int chapter, {
@@ -192,6 +257,36 @@ class BibleRepository {
     '$_select JOIN (SELECT verse_id,max(accessed_at) last FROM reading_history GROUP BY verse_id ORDER BY last DESC LIMIT 20) h ON h.verse_id=v.id ORDER BY h.last DESC',
   )).map(BibleVerse.fromMap).toList();
   Future<void> clearHistory() async => (await _db).delete('reading_history');
+  Future<LastLight?> lastLight() async {
+    final rows = await (await _db).rawQuery(
+      '$_select JOIN last_light l ON l.verse_id=v.id WHERE l.id=1',
+    );
+    if (rows.isEmpty) return null;
+    final row = rows.first;
+    try {
+      return LastLight(
+        verse: BibleVerse.fromMap(row),
+        savedAt: DateTime.parse(row['saved_at'] as String).toLocal(),
+        localDate: row['local_date'] as String,
+      );
+    } catch (_) {
+      await (await _db).delete('last_light', where: 'id=1');
+      return null;
+    }
+  }
+
+  Future<void> saveLastLight(BibleVerse verse) async {
+    final now = DateTime.now();
+    final date =
+        '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    await (await _db).insert('last_light', {
+      'id': 1,
+      'verse_id': verse.id,
+      'saved_at': now.toUtc().toIso8601String(),
+      'local_date': date,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
   Future<void> toggleBookmark(int verseId) async {
     final db = await _db;
     final n = await db.delete(
@@ -309,7 +404,12 @@ class BibleRepository {
     ))
       r['verse_id'] as int: r['color'] as String,
   };
-  Future<void> saveNote(int verseId, String content, {int? id}) async {
+  Future<void> saveNote(
+    int verseId,
+    String content, {
+    int? id,
+    String type = 'note',
+  }) async {
     final db = await _db;
     final now = DateTime.now().toUtc().toIso8601String();
     if (id == null) {
@@ -318,11 +418,12 @@ class BibleRepository {
         'content': content,
         'created_at': now,
         'updated_at': now,
+        'type': type,
       });
     } else {
       await db.update(
         'notes',
-        {'content': content, 'updated_at': now},
+        {'content': content, 'updated_at': now, 'type': type},
         where: 'id=?',
         whereArgs: [id],
       );
@@ -334,8 +435,8 @@ class BibleRepository {
   Future<List<SavedVerse>> notes({String query = ''}) async {
     final term = query.trim();
     final where = term.isEmpty
-        ? ''
-        : ' WHERE n.content LIKE ? OR v.text LIKE ? OR b.name LIKE ?';
+        ? " WHERE n.type='note'"
+        : " WHERE n.type='note' AND (n.content LIKE ? OR v.text LIKE ? OR b.name LIKE ?)";
     final args = term.isEmpty ? <Object?>[] : ['%$term%', '%$term%', '%$term%'];
     return (await (await _db).rawQuery(
           '''SELECT n.id note_id,n.content,n.created_at,v.*,
@@ -355,5 +456,97 @@ class BibleRepository {
           ),
         )
         .toList();
+  }
+
+  Future<void> savePrayer(int verseId, String content, {int? id}) async {
+    final db = await _db;
+    final now = DateTime.now().toUtc().toIso8601String();
+    if (id == null) {
+      await db.insert('prayers', {
+        'verse_id': verseId,
+        'content': content,
+        'created_at': now,
+        'updated_at': now,
+      });
+    } else {
+      await db.update(
+        'prayers',
+        {'content': content, 'updated_at': now},
+        where: 'id=?',
+        whereArgs: [id],
+      );
+    }
+  }
+
+  Future<List<FocusEntry>> focusEntries(String table) async {
+    final typeFilter = table == 'notes' ? "WHERE n.type='reflection'" : '';
+    final alias = table == 'notes' ? 'n' : 'p';
+    final rows = await (await _db).rawQuery(
+      '''SELECT $alias.id entry_id,$alias.content,$alias.created_at,$alias.updated_at,v.*,b.name book_name,bv.abbreviation version_abbreviation
+      FROM $table $alias JOIN verses v ON v.id=$alias.verse_id JOIN books b ON b.id=v.book_id JOIN bible_versions bv ON bv.id=v.version_id
+      $typeFilter ORDER BY $alias.updated_at DESC''',
+    );
+    return rows
+        .map(
+          (row) => FocusEntry(
+            id: row['entry_id'] as int,
+            verse: BibleVerse.fromMap(row),
+            content: row['content'] as String,
+            createdAt: DateTime.parse(row['created_at'] as String),
+            updatedAt: DateTime.parse(row['updated_at'] as String),
+          ),
+        )
+        .toList();
+  }
+
+  Future<FocusSession> startFocusSession(int verseId) async {
+    final now = DateTime.now().toUtc().toIso8601String();
+    final id = await (await _db).insert('focus_sessions', {
+      'verse_id': verseId,
+      'created_at': now,
+    });
+    return FocusSession(
+      id: id,
+      verseId: verseId,
+      readCompleted: false,
+      reflectionCompleted: false,
+      respondCompleted: false,
+      prayerCompleted: false,
+      createdAt: DateTime.parse(now),
+    );
+  }
+
+  Future<void> updateFocusSession(
+    int id, {
+    bool? read,
+    bool? reflection,
+    bool? respond,
+    bool? prayer,
+    bool completed = false,
+  }) async {
+    final values = <String, Object?>{};
+    if (read != null) {
+      values['read_completed'] = read ? 1 : 0;
+    }
+    if (reflection != null) {
+      values['reflection_completed'] = reflection ? 1 : 0;
+    }
+    if (respond != null) {
+      values['respond_completed'] = respond ? 1 : 0;
+    }
+    if (prayer != null) {
+      values['prayer_completed'] = prayer ? 1 : 0;
+    }
+    if (completed) {
+      values['completed_at'] = DateTime.now().toUtc().toIso8601String();
+    }
+    if (values.isNotEmpty) {
+      await (await _db).update(
+        'focus_sessions',
+        values,
+        where: 'id=?',
+        whereArgs: [id],
+      );
+    }
   }
 }

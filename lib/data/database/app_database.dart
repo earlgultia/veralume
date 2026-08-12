@@ -107,6 +107,12 @@ class AppDatabase {
     await db.execute(
       'CREATE TABLE IF NOT EXISTS notes(id INTEGER PRIMARY KEY AUTOINCREMENT, verse_id INTEGER NOT NULL REFERENCES verses(id), content TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)',
     );
+    final noteColumns = await db.rawQuery('PRAGMA table_info(notes)');
+    if (!noteColumns.any((column) => column['name'] == 'type')) {
+      await db.execute(
+        "ALTER TABLE notes ADD COLUMN type TEXT NOT NULL DEFAULT 'note'",
+      );
+    }
     await db.execute(
       'CREATE TABLE IF NOT EXISTS reading_history(id INTEGER PRIMARY KEY AUTOINCREMENT, verse_id INTEGER NOT NULL REFERENCES verses(id), accessed_at TEXT NOT NULL)',
     );
@@ -138,6 +144,18 @@ class AppDatabase {
     );
     await db.execute(
       'CREATE TABLE IF NOT EXISTS journey_progress(journey_id TEXT PRIMARY KEY, started_at TEXT NOT NULL, completed_days TEXT NOT NULL DEFAULT \'\', completed_at TEXT)',
+    );
+    await db.execute(
+      'CREATE TABLE IF NOT EXISTS prayers(id INTEGER PRIMARY KEY AUTOINCREMENT, verse_id INTEGER NOT NULL REFERENCES verses(id), content TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)',
+    );
+    await db.execute(
+      'CREATE TABLE IF NOT EXISTS focus_sessions(id INTEGER PRIMARY KEY AUTOINCREMENT, verse_id INTEGER NOT NULL REFERENCES verses(id), read_completed INTEGER NOT NULL DEFAULT 0, reflection_completed INTEGER NOT NULL DEFAULT 0, respond_completed INTEGER NOT NULL DEFAULT 0, prayer_completed INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, completed_at TEXT)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS focus_sessions_recent ON focus_sessions(created_at DESC)',
+    );
+    await db.execute(
+      'CREATE TABLE IF NOT EXISTS last_light(id INTEGER PRIMARY KEY CHECK(id=1), verse_id INTEGER NOT NULL REFERENCES verses(id), saved_at TEXT NOT NULL, local_date TEXT NOT NULL)',
     );
   }
 }

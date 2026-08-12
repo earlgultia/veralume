@@ -77,3 +77,49 @@ class SavedVerse {
   final String? content, color;
   final DateTime createdAt;
 }
+
+class LastLight {
+  const LastLight({
+    required this.verse,
+    required this.savedAt,
+    required this.localDate,
+  });
+  final BibleVerse verse;
+  final DateTime savedAt;
+  final String localDate;
+}
+
+class FocusEntry {
+  const FocusEntry({
+    required this.id,
+    required this.verse,
+    required this.content,
+    required this.createdAt,
+    this.updatedAt,
+  });
+  final int id;
+  final BibleVerse verse;
+  final String content;
+  final DateTime createdAt;
+  final DateTime? updatedAt;
+}
+
+class FocusSession {
+  const FocusSession({
+    required this.id,
+    required this.verseId,
+    required this.readCompleted,
+    required this.reflectionCompleted,
+    required this.respondCompleted,
+    required this.prayerCompleted,
+    required this.createdAt,
+    this.completedAt,
+  });
+  final int id, verseId;
+  final bool readCompleted,
+      reflectionCompleted,
+      respondCompleted,
+      prayerCompleted;
+  final DateTime createdAt;
+  final DateTime? completedAt;
+}

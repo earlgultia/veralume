@@ -13,7 +13,9 @@ import '../../domain/quiz/bible_quiz.dart';
 import '../providers/app_providers.dart';
 import '../widgets/glass_card.dart';
 import 'journey_screens.dart';
+import 'focus_screen.dart';
 import 'whats_new_screen.dart';
+import 'verse_lens_screen.dart';
 
 class OnboardingScreen extends ConsumerStatefulWidget {
   const OnboardingScreen({super.key});
@@ -484,6 +486,18 @@ class _AppShellState extends ConsumerState<AppShell> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _openQuietVerse(BibleVerse verse) async {
+    await openReader(
+      context,
+      ref,
+      verse.bookId,
+      verse.chapter,
+      focusVerse: verse.number,
+      quiet: true,
+    );
+    if (mounted) setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     final screens = [
@@ -491,6 +505,7 @@ class _AppShellState extends ConsumerState<AppShell> {
         onNavigate: (i) => setState(() => index = i),
         openPassage: _openJourneyPassage,
         openVerse: _openVerse,
+        openQuietVerse: _openQuietVerse,
       ),
       const BibleScreen(),
       JourneyScreen(
@@ -594,10 +609,12 @@ class HomeScreen extends ConsumerWidget {
     required this.onNavigate,
     required this.openPassage,
     required this.openVerse,
+    required this.openQuietVerse,
   });
   final ValueChanged<int> onNavigate;
   final OpenJourneyPassage openPassage;
   final Future<void> Function(BibleVerse verse) openVerse;
+  final Future<void> Function(BibleVerse verse) openQuietVerse;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -618,10 +635,11 @@ class HomeScreen extends ConsumerWidget {
       title: 'VERALUME',
       highlightTitle: true,
       child: FutureBuilder(
-        future: Future.wait<Object>([
+        future: Future.wait<Object?>([
           journey.resolvePassage(light.passage, versionId),
           repo.history(),
           journey.stats(),
+          repo.lastLight(),
         ]),
         builder: (context, snapshot) {
           final dailyPassage = snapshot.hasData
@@ -634,6 +652,9 @@ class HomeScreen extends ConsumerWidget {
           final stats = snapshot.hasData
               ? snapshot.data![2] as JourneyStats
               : null;
+          final lastLight = snapshot.hasData
+              ? snapshot.data![3] as LastLight?
+              : null;
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -645,6 +666,13 @@ class HomeScreen extends ConsumerWidget {
                 _ContinueReading(
                   verse: history.first,
                   onTap: () => openVerse(history.first),
+                ),
+              ],
+              if (lastLight != null) ...[
+                const SizedBox(height: 16),
+                _LastLightCard(
+                  lastLight: lastLight,
+                  onTap: () => openQuietVerse(lastLight.verse),
                 ),
               ],
               const SizedBox(height: 28),
@@ -679,6 +707,52 @@ class HomeScreen extends ConsumerWidget {
                       openPassage: openPassage,
                     ),
                   ),
+                ),
+              ),
+              const SizedBox(height: 28),
+              const _HomeHeading(
+                'Give Me a Verse',
+                'A little Scripture for what you need today',
+              ),
+              const SizedBox(height: 12),
+              GlassCard(
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => GiveMeAVerseScreen(
+                      openVerse: openVerse,
+                      askDavid: (verse) => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => DavidScreen(
+                            initialQuestion:
+                                'Let’s talk about ${verse.reference}.\n\n${verse.text}',
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.menu_book_rounded, color: AppTheme.gold),
+                    SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'I need…',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 17,
+                            ),
+                          ),
+                          SizedBox(height: 3),
+                          Text('Hope, peace, strength, wisdom, and more.'),
+                        ],
+                      ),
+                    ),
+                    Icon(Icons.arrow_forward_rounded),
+                  ],
                 ),
               ),
               const SizedBox(height: 28),
@@ -1464,6 +1538,66 @@ class _ContinueReading extends StatelessWidget {
   );
 }
 
+class _LastLightCard extends StatelessWidget {
+  const _LastLightCard({required this.lastLight, required this.onTap});
+  final LastLight lastLight;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final yesterday = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).subtract(const Duration(days: 1));
+    final saved = lastLight.savedAt;
+    final wasLastNight =
+        saved.year == yesterday.year &&
+        saved.month == yesterday.month &&
+        saved.day == yesterday.day;
+    return GlassCard(
+      onTap: onTap,
+      child: Row(
+        children: [
+          const Icon(Icons.nightlight_round, color: AppTheme.gold),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'LAST LIGHT',
+                  style: TextStyle(
+                    color: AppTheme.gold,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  lastLight.verse.reference,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 17,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  wasLastNight
+                      ? 'You ended your reading here last night.'
+                      : 'You ended your quiet reading here.',
+                ),
+              ],
+            ),
+          ),
+          const Icon(Icons.arrow_forward_rounded),
+        ],
+      ),
+    );
+  }
+}
+
 class _HomeAction extends StatelessWidget {
   const _HomeAction(
     this.width,
@@ -1957,10 +2091,15 @@ Future<void> openReader(
   int bookId,
   int chapter, {
   int? focusVerse,
+  bool quiet = false,
 }) => Navigator.of(context).push(
   MaterialPageRoute(
-    builder: (_) =>
-        ReaderScreen(bookId: bookId, chapter: chapter, focusVerse: focusVerse),
+    builder: (_) => ReaderScreen(
+      bookId: bookId,
+      chapter: chapter,
+      focusVerse: focusVerse,
+      initialQuiet: quiet,
+    ),
   ),
 );
 
@@ -1970,9 +2109,11 @@ class ReaderScreen extends ConsumerStatefulWidget {
     required this.bookId,
     required this.chapter,
     this.focusVerse,
+    this.initialQuiet = false,
   });
   final int bookId, chapter;
   final int? focusVerse;
+  final bool initialQuiet;
   @override
   ConsumerState<ReaderScreen> createState() => _ReaderScreenState();
 }
@@ -1986,12 +2127,16 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
   final ScrollController _scrollController = ScrollController();
   final Set<String> _recordedPassages = {};
   bool _focusApplied = false;
+  bool _quiet = false;
+  bool _controlsVisible = true;
+  Timer? _controlsTimer;
   Timer? _meaningfulReadTimer;
   String? _pendingReadingKey;
   DateTime? _readingStartedAt;
   int _pendingVerseCount = 0;
   int _pendingBookId = 0;
   int _pendingChapter = 0;
+  double _horizontalDrag = 0;
   bool _pendingCompletion = false;
   final Set<String> _recordedMeaningfulReads = {};
 
@@ -1999,15 +2144,56 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    final settings = ref.read(settingsProvider);
+    _quiet = widget.initialQuiet || settings.quietReading;
+    if (_quiet && settings.keepScreenAwake) {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _setScreenAwake(true),
+      );
+    }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _meaningfulReadTimer?.cancel();
+    _controlsTimer?.cancel();
+    _setScreenAwake(false);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     _scrollController.dispose();
     super.dispose();
+  }
+
+  static const _quietChannel = MethodChannel('veralume/quiet_reading');
+  Future<void> _setScreenAwake(bool enabled) async {
+    try {
+      await _quietChannel.invokeMethod<void>('setKeepScreenOn', {
+        'enabled': enabled,
+      });
+    } catch (_) {}
+  }
+
+  void _setQuiet(bool enabled, ReadingSettings settings) {
+    setState(() {
+      _quiet = enabled;
+      _controlsVisible = true;
+    });
+    _setScreenAwake(enabled && settings.keepScreenAwake);
+    if (enabled) _scheduleControlsHide(settings);
+  }
+
+  void _scheduleControlsHide(ReadingSettings settings) {
+    _controlsTimer?.cancel();
+    if (!_quiet || settings.quietControls == 'always') return;
+    _controlsTimer = Timer(const Duration(seconds: 4), () {
+      if (mounted && selected.isEmpty) setState(() => _controlsVisible = false);
+    });
+  }
+
+  void _toggleControls(ReadingSettings settings) {
+    if (!_quiet || settings.quietControls == 'always') return;
+    setState(() => _controlsVisible = !_controlsVisible);
+    if (_controlsVisible) _scheduleControlsHide(settings);
   }
 
   @override
@@ -2123,110 +2309,195 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
             });
           }
         }
+        final quietSurface = settings.quietTone == 'system'
+            ? Theme.of(context).scaffoldBackgroundColor
+            : settings.quietTone == 'warm'
+            ? const Color(0xFF19140F)
+            : const Color(0xFF0E1420);
+        final quietInk = settings.quietTone == 'system'
+            ? Theme.of(context).textTheme.bodyLarge?.color
+            : settings.quietTone == 'warm'
+            ? const Color(0xFFF2E7D3)
+            : const Color(0xFFE8E9E6);
+        if (_quiet && _controlsVisible) _scheduleControlsHide(settings);
         return Scaffold(
-          appBar: AppBar(
-            title: Text(
-              verses.isEmpty ? 'Bible' : '${verses.first.bookName} $chapter',
-            ),
-            actions: [
-              FutureBuilder(
-                future: repo.versions(),
-                builder: (context, snapshot) => PopupMenuButton<int>(
-                  tooltip: 'Switch Bible version',
-                  icon: const Icon(Icons.translate),
-                  itemBuilder: (_) => [
-                    for (final version in snapshot.data ?? <BibleVersion>[])
-                      PopupMenuItem(
-                        value: version.id,
-                        child: Text(
-                          '${version.name} (${version.abbreviation})',
-                        ),
+          backgroundColor: _quiet ? quietSurface : null,
+          appBar: _quiet && !_controlsVisible
+              ? null
+              : AppBar(
+                  title: Text(
+                    _quiet
+                        ? 'Quiet Reading'
+                        : verses.isEmpty
+                        ? 'Bible'
+                        : '${verses.first.bookName} $chapter',
+                  ),
+                  actions: [
+                    if (_quiet)
+                      IconButton(
+                        tooltip: 'End My Reading',
+                        icon: const Icon(Icons.nightlight_round),
+                        onPressed: verses.isEmpty
+                            ? null
+                            : () => _endMyReading(
+                                selected.isEmpty
+                                    ? verses.first
+                                    : verses.firstWhere(
+                                        (verse) => selected.contains(verse.id),
+                                        orElse: () => verses.first,
+                                      ),
+                              ),
                       ),
+                    FutureBuilder(
+                      future: repo.versions(),
+                      builder: (context, snapshot) => PopupMenuButton<int>(
+                        tooltip: 'Switch Bible version',
+                        icon: const Icon(Icons.translate),
+                        itemBuilder: (_) => [
+                          for (final version
+                              in snapshot.data ?? <BibleVersion>[])
+                            PopupMenuItem(
+                              value: version.id,
+                              child: Text(
+                                '${version.name} (${version.abbreviation})',
+                              ),
+                            ),
+                        ],
+                        onSelected: (versionId) async {
+                          final target = await repo.equivalentBook(
+                            bookId,
+                            versionId,
+                          );
+                          if (target != null && mounted) {
+                            await ref
+                                .read(settingsProvider.notifier)
+                                .setDefaultVersion(versionId);
+                            if (!mounted) return;
+                            setState(() {
+                              bookId = target;
+                              selected.clear();
+                            });
+                          }
+                        },
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: _quiet
+                          ? 'Exit Quiet Reading'
+                          : 'Reading settings',
+                      onPressed: _quiet
+                          ? () => _setQuiet(false, settings)
+                          : () => _readingSettings(context),
+                      icon: Icon(_quiet ? Icons.close : Icons.text_fields),
+                    ),
                   ],
-                  onSelected: (versionId) async {
-                    final target = await repo.equivalentBook(bookId, versionId);
-                    if (target != null && mounted) {
-                      await ref
-                          .read(settingsProvider.notifier)
-                          .setDefaultVersion(versionId);
-                      if (!mounted) return;
-                      setState(() {
-                        bookId = target;
-                        selected.clear();
-                      });
-                    }
-                  },
+                ),
+          body: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTap: () => _toggleControls(settings),
+            onHorizontalDragUpdate: (details) =>
+                _horizontalDrag += details.delta.dx,
+            onHorizontalDragEnd: (_) async {
+              if (_horizontalDrag.abs() < 90 || selected.isNotEmpty) {
+                _horizontalDrag = 0;
+                return;
+              }
+              final moveNext = _horizontalDrag < 0;
+              _horizontalDrag = 0;
+              if (moveNext) {
+                final count = await repo.chapterCount(bookId);
+                if (chapter < count && mounted) {
+                  setState(() {
+                    chapter++;
+                    selected.clear();
+                  });
+                }
+              } else if (chapter > 1 && mounted) {
+                setState(() {
+                  chapter--;
+                  selected.clear();
+                });
+              }
+            },
+            child: SelectionArea(
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: settings.readingWidth == 'compact'
+                        ? 480
+                        : settings.readingWidth == 'wide'
+                        ? double.infinity
+                        : 720,
+                  ),
+                  child: ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.fromLTRB(22, 12, 22, 100),
+                    itemCount: verses.length,
+                    itemBuilder: (c, i) {
+                      final v = verses[i], hex = highlights[v.id];
+                      return Semantics(
+                        label: 'Verse ${v.number}',
+                        button: true,
+                        child: AnimatedContainer(
+                          duration: reduceMotion
+                              ? Duration.zero
+                              : const Duration(milliseconds: 160),
+                          margin: const EdgeInsets.only(bottom: 5),
+                          decoration: BoxDecoration(
+                            color: selected.contains(v.id)
+                                ? AppTheme.gold.withValues(alpha: .18)
+                                : hex == null
+                                ? null
+                                : _color(hex).withValues(alpha: .24),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: InkWell(
+                            key: ValueKey('verse-${v.number}'),
+                            borderRadius: BorderRadius.circular(14),
+                            onTap: () {
+                              HapticFeedback.selectionClick();
+                              setState(() {
+                                if (!selected.add(v.id)) selected.remove(v.id);
+                              });
+                            },
+                            onLongPress: () => _actions(context, [v]),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 8,
+                              ),
+                              child: Text.rich(
+                                TextSpan(
+                                  children: [
+                                    if (settings.showVerseNumbers)
+                                      TextSpan(
+                                        text: '${v.number}  ',
+                                        style: TextStyle(
+                                          color: AppTheme.gold,
+                                          fontWeight: settings.boldVerseNumbers
+                                              ? FontWeight.bold
+                                              : FontWeight.normal,
+                                        ),
+                                      ),
+                                    TextSpan(text: v.text),
+                                  ],
+                                ),
+                                style: TextStyle(
+                                  fontSize: settings.fontSize,
+                                  height: settings.lineHeight,
+                                  fontFamily: settings.serif ? 'serif' : null,
+                                  color: _quiet ? quietInk : null,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
                 ),
               ),
-              IconButton(
-                tooltip: 'Reading settings',
-                onPressed: () => _readingSettings(context),
-                icon: const Icon(Icons.text_fields),
-              ),
-            ],
-          ),
-          body: SelectionArea(
-            child: ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.fromLTRB(22, 12, 22, 100),
-              itemCount: verses.length,
-              itemBuilder: (c, i) {
-                final v = verses[i], hex = highlights[v.id];
-                return Semantics(
-                  label: 'Verse ${v.number}',
-                  button: true,
-                  child: AnimatedContainer(
-                    duration: reduceMotion
-                        ? Duration.zero
-                        : const Duration(milliseconds: 160),
-                    margin: const EdgeInsets.only(bottom: 5),
-                    decoration: BoxDecoration(
-                      color: selected.contains(v.id)
-                          ? AppTheme.gold.withValues(alpha: .18)
-                          : hex == null
-                          ? null
-                          : _color(hex).withValues(alpha: .24),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: InkWell(
-                      key: ValueKey('verse-${v.number}'),
-                      borderRadius: BorderRadius.circular(14),
-                      onTap: () {
-                        HapticFeedback.selectionClick();
-                        setState(() {
-                          if (!selected.add(v.id)) selected.remove(v.id);
-                        });
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 8,
-                        ),
-                        child: Text.rich(
-                          TextSpan(
-                            children: [
-                              if (settings.showVerseNumbers)
-                                TextSpan(
-                                  text: '${v.number}  ',
-                                  style: const TextStyle(
-                                    color: AppTheme.gold,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              TextSpan(text: v.text),
-                            ],
-                          ),
-                          style: TextStyle(
-                            fontSize: settings.fontSize,
-                            height: settings.lineHeight,
-                            fontFamily: settings.serif ? 'serif' : null,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              },
             ),
           ),
           floatingActionButtonLocation:
@@ -2247,43 +2518,45 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
                         : '${selected.length} verses selected',
                   ),
                 ),
-          bottomNavigationBar: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: chapter > 1
-                          ? () => setState(() {
-                              chapter--;
-                              selected.clear();
-                            })
-                          : null,
-                      icon: const Icon(Icons.chevron_left),
-                      label: const Text('Previous'),
+          bottomNavigationBar: _quiet && !_controlsVisible
+              ? null
+              : SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: chapter > 1
+                                ? () => setState(() {
+                                    chapter--;
+                                    selected.clear();
+                                  })
+                                : null,
+                            icon: const Icon(Icons.chevron_left),
+                            label: const Text('Previous'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: FilledButton.tonalIcon(
+                            onPressed: () async {
+                              final count = await repo.chapterCount(bookId);
+                              if (chapter < count && mounted) {
+                                setState(() {
+                                  chapter++;
+                                  selected.clear();
+                                });
+                              }
+                            },
+                            icon: const Icon(Icons.chevron_right),
+                            label: const Text('Next'),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: FilledButton.tonalIcon(
-                      onPressed: () async {
-                        final count = await repo.chapterCount(bookId);
-                        if (chapter < count && mounted) {
-                          setState(() {
-                            chapter++;
-                            selected.clear();
-                          });
-                        }
-                      },
-                      icon: const Icon(Icons.chevron_right),
-                      label: const Text('Next'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+                ),
         );
       },
     );
@@ -2325,6 +2598,49 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
               },
             ),
             ListTile(
+              leading: const Icon(Icons.short_text_rounded),
+              title: const Text('Quick context'),
+              enabled: selectedVerses.length == 1,
+              subtitle: const Text('See the surrounding passage here'),
+              onTap: selectedVerses.length != 1
+                  ? null
+                  : () {
+                      Navigator.pop(c);
+                      _quickContext(first);
+                    },
+            ),
+            ListTile(
+              leading: const Icon(Icons.auto_awesome_outlined),
+              title: const Text('Verse Lens'),
+              enabled: selectedVerses.length == 1,
+              subtitle: const Text('See this verse in context'),
+              onTap: selectedVerses.length != 1
+                  ? null
+                  : () {
+                      Navigator.pop(c);
+                      _openLens(first);
+                    },
+            ),
+            ListTile(
+              leading: const Icon(Icons.auto_awesome_outlined),
+              title: const Text('Focus'),
+              enabled: selectedVerses.length == 1,
+              subtitle: const Text('Read, reflect, respond, and pray'),
+              onTap: selectedVerses.length != 1
+                  ? null
+                  : () {
+                      Navigator.pop(c);
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => FocusVerseScreen(
+                            verse: first,
+                            onAskDavid: () => _askDavid(first),
+                          ),
+                        ),
+                      );
+                    },
+            ),
+            ListTile(
               leading: const Icon(Icons.highlight),
               title: const Text('Highlight'),
               trailing: Row(
@@ -2349,6 +2665,17 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
                     ),
                 ],
               ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.psychology_alt_outlined),
+              title: const Text('Ask David'),
+              enabled: selectedVerses.length == 1,
+              onTap: selectedVerses.length != 1
+                  ? null
+                  : () {
+                      Navigator.pop(c);
+                      _askDavid(first);
+                    },
             ),
             ListTile(
               leading: const Icon(Icons.format_color_reset),
@@ -2430,6 +2757,38 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
     if (mounted) setState(selected.clear);
   }
 
+  void _askDavid(BibleVerse verse) => Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (_) => DavidScreen(
+        initialQuestion:
+            'Let’s talk about ${verse.reference}.\n\n${verse.text}',
+      ),
+    ),
+  );
+
+  void _openLens(BibleVerse verse) => Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (_) => VerseLensScreen(
+        verse: verse,
+        openPassage: _openConnectedPassage,
+        askDavid: _askDavid,
+      ),
+    ),
+  );
+
+  void _quickContext(BibleVerse verse) => showModalBottomSheet(
+    context: context,
+    showDragHandle: true,
+    isScrollControlled: true,
+    builder: (sheetContext) => QuickContextSheet(
+      verse: verse,
+      onOpenLens: () {
+        Navigator.pop(sheetContext);
+        _openLens(verse);
+      },
+    ),
+  );
+
   Future<void> _openConnectedPassage(PassageReference passage) async {
     final repo = ref.read(bibleRepositoryProvider);
     final book = await repo.bookByOrder(
@@ -2495,6 +2854,14 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  SwitchListTile(
+                    title: const Text('Quiet Reading'),
+                    subtitle: const Text(
+                      'A calm, distraction-free night reader',
+                    ),
+                    value: _quiet,
+                    onChanged: (v) => _setQuiet(v, s),
+                  ),
                   Text(
                     'Text size ${s.fontSize.round()}',
                     style: Theme.of(c).textTheme.titleMedium,
@@ -2514,6 +2881,42 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
                         .read(settingsProvider.notifier)
                         .update(s.copyWith(serif: v)),
                   ),
+                  SegmentedButton<double>(
+                    segments: const [
+                      ButtonSegment(value: 1.35, label: Text('Compact')),
+                      ButtonSegment(value: 1.65, label: Text('Normal')),
+                      ButtonSegment(value: 1.95, label: Text('Relaxed')),
+                    ],
+                    selected: {
+                      s.lineHeight < 1.5
+                          ? 1.35
+                          : s.lineHeight > 1.8
+                          ? 1.95
+                          : 1.65,
+                    },
+                    onSelectionChanged: (v) => ref
+                        .read(settingsProvider.notifier)
+                        .update(s.copyWith(lineHeight: v.first)),
+                  ),
+                  const SizedBox(height: 10),
+                  SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(value: 'compact', label: Text('Compact')),
+                      ButtonSegment(value: 'normal', label: Text('Normal')),
+                      ButtonSegment(value: 'wide', label: Text('Wide')),
+                    ],
+                    selected: {s.readingWidth},
+                    onSelectionChanged: (v) => ref
+                        .read(settingsProvider.notifier)
+                        .update(s.copyWith(readingWidth: v.first)),
+                  ),
+                  SwitchListTile(
+                    title: const Text('Bold verse numbers'),
+                    value: s.boldVerseNumbers,
+                    onChanged: (v) => ref
+                        .read(settingsProvider.notifier)
+                        .update(s.copyWith(boldVerseNumbers: v)),
+                  ),
                   SwitchListTile(
                     title: const Text('Verse numbers'),
                     value: s.showVerseNumbers,
@@ -2521,11 +2924,146 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
                         .read(settingsProvider.notifier)
                         .update(s.copyWith(showVerseNumbers: v)),
                   ),
+                  if (_quiet) ...[
+                    const SizedBox(height: 8),
+                    const Text('Reading tone'),
+                    SegmentedButton<String>(
+                      segments: const [
+                        ButtonSegment(value: 'cool', label: Text('Cool Dark')),
+                        ButtonSegment(value: 'warm', label: Text('Warm Dark')),
+                        ButtonSegment(value: 'system', label: Text('System')),
+                      ],
+                      selected: {s.quietTone},
+                      onSelectionChanged: (v) => ref
+                          .read(settingsProvider.notifier)
+                          .update(s.copyWith(quietTone: v.first)),
+                    ),
+                  ],
                 ],
               ),
             ),
           );
         },
+      ),
+    );
+  }
+
+  Future<void> _endMyReading(BibleVerse verse) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (c) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'BEFORE YOU REST',
+                style: TextStyle(
+                  color: AppTheme.gold,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.4,
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                verse.reference,
+                style: Theme.of(
+                  c,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '“${verse.text}”',
+                style: const TextStyle(fontFamily: 'serif', height: 1.5),
+              ),
+              const SizedBox(height: 18),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  OutlinedButton(
+                    onPressed: () => Navigator.pop(c, 'reflect'),
+                    child: const Text('Reflect'),
+                  ),
+                  OutlinedButton(
+                    onPressed: () => Navigator.pop(c, 'save'),
+                    child: const Text('Save Verse'),
+                  ),
+                  OutlinedButton(
+                    onPressed: () => Navigator.pop(c, 'continue'),
+                    child: const Text('Continue Reading'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(c, 'goodnight'),
+                    child: const Text('Good Night'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (!mounted || action == null || action == 'continue') return;
+    if (action == 'reflect') {
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => FocusVerseScreen(
+            verse: verse,
+            onAskDavid: () => _askDavid(verse),
+          ),
+        ),
+      );
+      return;
+    }
+    if (action == 'save') {
+      await ref.read(bibleRepositoryProvider).toggleBookmark(verse.id);
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Verse saved.')));
+      }
+      return;
+    }
+    if (ref.read(settingsProvider).rememberLastLight) {
+      await ref.read(bibleRepositoryProvider).saveLastLight(verse);
+    }
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('GOOD NIGHT'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Take this Word with you.'),
+            const SizedBox(height: 16),
+            Text(
+              verse.reference,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '“${verse.text}”',
+              style: const TextStyle(fontFamily: 'serif'),
+            ),
+            const SizedBox(height: 16),
+            const Text('Rest well.'),
+          ],
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(c);
+              Navigator.pop(context);
+            },
+            child: const Text('Done'),
+          ),
+        ],
       ),
     );
   }
@@ -2543,7 +3081,8 @@ class _DavidMessage {
 }
 
 class DavidScreen extends ConsumerStatefulWidget {
-  const DavidScreen({super.key});
+  const DavidScreen({super.key, this.initialQuestion});
+  final String? initialQuestion;
 
   @override
   ConsumerState<DavidScreen> createState() => _DavidScreenState();
@@ -2577,6 +3116,12 @@ class _DavidScreenState extends ConsumerState<DavidScreen> {
       ref.read(bibleRepositoryProvider),
       journeyRepository: ref.read(journeyRepositoryProvider),
     );
+    if (widget.initialQuestion != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _controller.text = widget.initialQuestion!;
+        _ask();
+      });
+    }
   }
 
   @override
@@ -3605,10 +4150,72 @@ class SettingsScreen extends ConsumerWidget {
             onChanged: (v) => notifier.update(s.copyWith(showVerseNumbers: v)),
           ),
           SwitchListTile(
+            title: const Text('Bold verse numbers'),
+            value: s.boldVerseNumbers,
+            onChanged: (v) => notifier.update(s.copyWith(boldVerseNumbers: v)),
+          ),
+          ListTile(
+            title: const Text('Reading width'),
+            subtitle: SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: 'compact', label: Text('Compact')),
+                ButtonSegment(value: 'normal', label: Text('Normal')),
+                ButtonSegment(value: 'wide', label: Text('Wide')),
+              ],
+              selected: {s.readingWidth},
+              onSelectionChanged: (v) =>
+                  notifier.update(s.copyWith(readingWidth: v.first)),
+            ),
+          ),
+          SwitchListTile(
             title: const Text('Full-screen reading'),
             subtitle: const Text('Hide system bars while reading Scripture'),
             value: s.fullScreen,
             onChanged: (v) => notifier.update(s.copyWith(fullScreen: v)),
+          ),
+          const _Section('Quiet Reading'),
+          SwitchListTile(
+            title: const Text('Quiet Reading'),
+            subtitle: const Text('Use a peaceful, minimal reader at night'),
+            value: s.quietReading,
+            onChanged: (v) => notifier.update(s.copyWith(quietReading: v)),
+          ),
+          ListTile(
+            title: const Text('Reading tone'),
+            subtitle: SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: 'cool', label: Text('Cool Dark')),
+                ButtonSegment(value: 'warm', label: Text('Warm Dark')),
+                ButtonSegment(value: 'system', label: Text('System')),
+              ],
+              selected: {s.quietTone},
+              onSelectionChanged: (v) =>
+                  notifier.update(s.copyWith(quietTone: v.first)),
+            ),
+          ),
+          ListTile(
+            title: const Text('Show controls'),
+            subtitle: SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: 'tap', label: Text('Tap to show')),
+                ButtonSegment(value: 'always', label: Text('Always')),
+              ],
+              selected: {s.quietControls},
+              onSelectionChanged: (v) =>
+                  notifier.update(s.copyWith(quietControls: v.first)),
+            ),
+          ),
+          SwitchListTile(
+            title: const Text('Keep screen awake'),
+            subtitle: const Text('Only while Quiet Reading is open'),
+            value: s.keepScreenAwake,
+            onChanged: (v) => notifier.update(s.copyWith(keepScreenAwake: v)),
+          ),
+          SwitchListTile(
+            title: const Text('Remember Last Light'),
+            subtitle: const Text('Save where you end a quiet reading session'),
+            value: s.rememberLastLight,
+            onChanged: (v) => notifier.update(s.copyWith(rememberLastLight: v)),
           ),
           const _Section('Bible'),
           FutureBuilder(
@@ -3639,6 +4246,26 @@ class SettingsScreen extends ConsumerWidget {
             ),
           ),
           const _Section('Data'),
+          ListTile(
+            leading: const Icon(Icons.edit_note_outlined),
+            title: const Text('My Reflections'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const FocusHistoryScreen(prayers: false),
+              ),
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.volunteer_activism_outlined),
+            title: const Text('My Prayers'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const FocusHistoryScreen(prayers: true),
+              ),
+            ),
+          ),
           ListTile(
             leading: const Icon(Icons.history),
             title: const Text('Clear reading history'),
@@ -3672,7 +4299,7 @@ class SettingsScreen extends ConsumerWidget {
               color: AppTheme.gold,
             ),
             title: const Text('What’s New'),
-            subtitle: const Text('Veralume 1.4.5 · The Journey Update'),
+            subtitle: const Text('Veralume 1.4.7 · Verse Lens'),
             trailing: const Icon(Icons.chevron_right_rounded),
             onTap: () => Navigator.of(
               context,
@@ -3683,7 +4310,7 @@ class SettingsScreen extends ConsumerWidget {
             title: Text('Veralume'),
             subtitle: Text(
               'Truth · Light · Scripture\n'
-              'Version 1.4.5 · The Journey Update\n'
+              'Version 1.4.7 · Verse Lens\n'
               'ArkByte Technologies',
             ),
           ),

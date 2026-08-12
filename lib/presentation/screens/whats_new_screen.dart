@@ -8,34 +8,54 @@ class WhatsNewScreen extends StatelessWidget {
 
   static const _features = <(IconData, String, String)>[
     (
-      Icons.route_rounded,
-      'Walk Through the Word',
-      'Bible Journey is a new way to explore Scripture and follow your progress through the Bible.',
+      Icons.nightlight_round,
+      'Quiet Reading',
+      'A peaceful, distraction-free way to read Scripture at night.',
     ),
     (
-      Icons.light_mode_rounded,
-      'Your Light for Today',
-      'Receive a daily Scripture and a clearly labeled reflection, available completely offline.',
+      Icons.history_rounded,
+      'Last Light',
+      'Return to the passage where you ended your nighttime reading.',
     ),
     (
-      Icons.hub_rounded,
-      'Verse Connections',
-      'Discover curated passages connected to what you are reading.',
+      Icons.bedtime_outlined,
+      'End My Reading',
+      'Finish with Scripture, reflection, or a simple good-night moment.',
     ),
     (
-      Icons.psychology_alt_rounded,
-      'David Remembers',
-      'David can help you revisit local reading history, bookmarks, highlights, and notes.',
+      Icons.wb_sunny_outlined,
+      'Morning Return',
+      'Begin your day by returning to the Word you read the night before.',
     ),
     (
-      Icons.directions_walk_rounded,
-      'Walk With Me',
-      'Begin guided, offline Bible journeys for real-life seasons and spiritual growth.',
+      Icons.tonality_rounded,
+      'Warm Reading',
+      'A softer nighttime appearance for a calmer experience.',
     ),
     (
-      Icons.spa_rounded,
-      'Journey Milestones',
-      'Notice meaningful milestones as you continue through Scripture.',
+      Icons.edit_note_rounded,
+      'Context Slider',
+      'Expand a single verse into its surrounding passage.',
+    ),
+    (
+      Icons.touch_app_rounded,
+      'Quick Context',
+      'See the verses before and after without leaving the Bible reader.',
+    ),
+    (
+      Icons.text_fields_rounded,
+      'Key Words',
+      'Quickly identify important words within the selected passage.',
+    ),
+    (
+      Icons.swipe_rounded,
+      'Give Me a Verse',
+      'Find an encouraging Scripture based on what you are experiencing.',
+    ),
+    (
+      Icons.history_rounded,
+      'Better Bible Study',
+      'Move naturally between Scripture, Connections, Focus, Reflection, and David.',
     ),
   ];
 
@@ -61,7 +81,7 @@ class WhatsNewScreen extends StatelessWidget {
             Semantics(
               header: true,
               child: Text(
-                'VERALUME 1.4.5',
+                'VERALUME 1.4.8',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.labelLarge?.copyWith(
                   color: AppTheme.gold,
@@ -72,7 +92,7 @@ class WhatsNewScreen extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'The Journey Update',
+              'Quiet Light',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                 fontFamily: 'serif',
@@ -81,7 +101,7 @@ class WhatsNewScreen extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             const Text(
-              'Walk through the Word. One step at a time.',
+              'Read the Word. Quiet your heart. Rest in His presence.',
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 26),

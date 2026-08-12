@@ -190,4 +190,27 @@ void main() {
       (await repository.dailyVerse(date)).id,
     );
   });
+
+  test('Verse Lens context remains valid at chapter boundaries', () async {
+    final verses = await repository.chapter(1, 1);
+    final opening = await repository.contextFor(verses.first, 5);
+    final closing = await repository.contextFor(verses.last, 5);
+
+    expect(opening.map((verse) => verse.number), [1, 2, 3, 4, 5]);
+    expect(closing.map((verse) => verse.number), [27, 28, 29, 30, 31]);
+    expect(opening.every((verse) => verse.chapter == 1), isTrue);
+    expect(closing.every((verse) => verse.chapter == 1), isTrue);
+  });
+
+  test('Verse Lens resolves references in the selected translation', () async {
+    final verse = await repository.verseAt(
+      versionId: 2,
+      bookOrder: 43,
+      chapter: 3,
+      number: 16,
+    );
+    expect(verse, isNotNull);
+    expect(verse!.versionId, 2);
+    expect(verse.reference, 'John 3:16');
+  });
 }
