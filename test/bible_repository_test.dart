@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:veralume/data/repositories/bible_repository.dart';
+import 'package:veralume/data/database/app_database.dart';
+import 'package:veralume/domain/assistant/david_assistant.dart';
 
 void main() {
   sqfliteFfiInit();
@@ -26,6 +28,7 @@ void main() {
     await database.execute(
       'CREATE TABLE IF NOT EXISTS reading_history(id INTEGER PRIMARY KEY AUTOINCREMENT, verse_id INTEGER NOT NULL REFERENCES verses(id), accessed_at TEXT NOT NULL)',
     );
+    await AppDatabase.instance.ensureUserSchema(database);
     repository = BibleRepository.withConnection(database);
   }
 
@@ -67,6 +70,63 @@ void main() {
     expect(global, isNotEmpty);
     expect(version.every((verse) => verse.versionId == 1), isTrue);
     expect(book.every((verse) => verse.bookId == 1), isTrue);
+  });
+
+  test('David resolves references and answers about biblical events', () async {
+    final assistant = DavidAssistant(repository);
+    final reference = await assistant.ask('Please show me John 3:16', 1);
+    expect(reference.verses, hasLength(1));
+    expect(reference.verses.single.reference, 'John 3:16');
+
+    final event = await assistant.ask('Tell me about David and Goliath', 1);
+    expect(event.message, contains('Goliath'));
+    expect(event.verses, isNotEmpty);
+    expect(event.verses.every((verse) => verse.versionId == 1), isTrue);
+  });
+
+  test(
+    'David handles conversation and grounded life questions offline',
+    () async {
+      final assistant = DavidAssistant(repository);
+
+      final greeting = await assistant.ask('Hi David!', 1);
+      expect(greeting.message, contains('Hello'));
+      expect(greeting.verses, isEmpty);
+
+      final anxiety = await assistant.ask('I feel anxious and worried', 1);
+      expect(anxiety.message, contains('worried'));
+      expect(anxiety.verses, isNotEmpty);
+
+      final topic = await assistant.ask('Find Scripture about kindness', 1);
+      expect(topic.verses, isNotEmpty);
+      expect(topic.verses.every((verse) => verse.versionId == 1), isTrue);
+
+      final clothing = await assistant.ask('Wolf in sheeps clothing', 1);
+      expect(clothing.verses, isNotEmpty);
+      expect(clothing.verses.first.reference, 'Matthew 7:15');
+
+      final exhausted = await assistant.ask('I feel tired and overwhelmed', 1);
+      expect(exhausted.message, contains('tired'));
+      expect(exhausted.verses, isNotEmpty);
+
+      final guilty = await assistant.ask('I feel guilty and ashamed', 1);
+      expect(guilty.message, contains('tell God the truth'));
+      expect(guilty.verses, isNotEmpty);
+
+      final grateful = await assistant.ask('I am thankful today', 1);
+      expect(grateful.message, contains('thankful'));
+      expect(grateful.verses, isNotEmpty);
+    },
+  );
+
+  test('combined topic search resolves terms in one query', () async {
+    final results = await repository.searchAnyTerms(
+      ['kindness', 'mercy', 'compassion'],
+      versionId: 1,
+      limit: 6,
+    );
+    expect(results, isNotEmpty);
+    expect(results.length, lessThanOrEqualTo(6));
   });
 
   test(

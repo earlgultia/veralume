@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/repositories/bible_repository.dart';
+import '../../data/repositories/journey_repository.dart';
 
 final bibleRepositoryProvider = Provider((ref) => BibleRepository());
+final journeyRepositoryProvider = Provider((ref) => JourneyRepository());
 
 class ReadingSettings {
   const ReadingSettings({
@@ -77,6 +79,9 @@ class SettingsController extends StateNotifier<ReadingSettings> {
       p.setInt('defaultVersionId', value.defaultVersionId),
     ]);
   }
+
+  Future<void> setDefaultVersion(int versionId) =>
+      update(state.copyWith(defaultVersionId: versionId));
 }
 
 final settingsProvider =

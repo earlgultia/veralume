@@ -10,6 +10,10 @@ class AppDatabase {
 
   Future<Database> get database async => _database ??= await _open();
 
+  /// Ensures additive user-data tables exist without replacing Scripture data.
+  /// Exposed for deterministic migrations and database-backed tests.
+  Future<void> ensureUserSchema(Database db) => _createUserTables(db);
+
   Future<Database> _open() async {
     final databaseDirectory = await getDatabasesPath();
     final target = p.join(databaseDirectory, 'veralume_v2.db');
@@ -40,28 +44,52 @@ class AppDatabase {
     Database? previous;
     try {
       previous = await openDatabase(previousPath, readOnly: true);
-      final validVerseIds = <int>{
-        for (final row in await target.query('verses', columns: ['id']))
-          row['id'] as int,
-      };
-      await target.transaction((transaction) async {
-        for (final table in const [
-          'bookmarks',
-          'highlights',
-          'notes',
-          'reading_history',
-        ]) {
-          final rows = await previous!.query(table);
-          for (final row in rows) {
-            if (!validVerseIds.contains(row['verse_id'])) continue;
-            await transaction.insert(
-              table,
-              Map<String, Object?>.from(row),
-              conflictAlgorithm: ConflictAlgorithm.ignore,
-            );
-          }
+      for (final table in const [
+        'bookmarks',
+        'highlights',
+        'notes',
+        'reading_history',
+      ]) {
+        try {
+          final rows = await previous.rawQuery(
+            '''SELECT x.*,bv.code legacy_version_code,b.book_order legacy_book_order,
+               v.chapter_number legacy_chapter,v.verse_number legacy_verse
+               FROM $table x JOIN verses v ON v.id=x.verse_id
+               JOIN books b ON b.id=v.book_id
+               JOIN bible_versions bv ON bv.id=v.version_id''',
+          );
+          await target.transaction((transaction) async {
+            for (final row in rows) {
+              final matches = await transaction.rawQuery(
+                '''SELECT v.id FROM verses v JOIN books b ON b.id=v.book_id
+                 JOIN bible_versions bv ON bv.id=v.version_id
+                 WHERE bv.code=? AND b.book_order=? AND v.chapter_number=?
+                 AND v.verse_number=? LIMIT 1''',
+                [
+                  row['legacy_version_code'],
+                  row['legacy_book_order'],
+                  row['legacy_chapter'],
+                  row['legacy_verse'],
+                ],
+              );
+              if (matches.isEmpty) continue;
+              final migrated = Map<String, Object?>.from(row)
+                ..remove('legacy_version_code')
+                ..remove('legacy_book_order')
+                ..remove('legacy_chapter')
+                ..remove('legacy_verse')
+                ..['verse_id'] = matches.first['id'];
+              await transaction.insert(
+                table,
+                migrated,
+                conflictAlgorithm: ConflictAlgorithm.ignore,
+              );
+            }
+          });
+        } catch (_) {
+          // Recover every healthy table even if one legacy table is missing.
         }
-      });
+      }
     } catch (_) {
       // A damaged legacy database must not prevent the new Bible from opening.
     } finally {
@@ -84,6 +112,32 @@ class AppDatabase {
     );
     await db.execute(
       'CREATE INDEX IF NOT EXISTS history_recent ON reading_history(accessed_at DESC)',
+    );
+    await db.execute(
+      'CREATE TABLE IF NOT EXISTS reading_progress(book_order INTEGER NOT NULL, chapter INTEGER NOT NULL, verses_read INTEGER NOT NULL DEFAULT 0, completed INTEGER NOT NULL DEFAULT 0, first_read_at TEXT NOT NULL, last_read_at TEXT NOT NULL, PRIMARY KEY(book_order, chapter))',
+    );
+    await db.execute(
+      'CREATE TABLE IF NOT EXISTS reading_sessions(id INTEGER PRIMARY KEY AUTOINCREMENT, book_order INTEGER NOT NULL, chapter INTEGER NOT NULL, started_at TEXT NOT NULL, ended_at TEXT NOT NULL, local_date TEXT NOT NULL, duration_seconds INTEGER NOT NULL, verses_read INTEGER NOT NULL DEFAULT 0)',
+    );
+    final sessionColumns = await db.rawQuery(
+      'PRAGMA table_info(reading_sessions)',
+    );
+    if (!sessionColumns.any((column) => column['name'] == 'local_date')) {
+      await db.execute(
+        'ALTER TABLE reading_sessions ADD COLUMN local_date TEXT',
+      );
+    }
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS sessions_started ON reading_sessions(started_at DESC)',
+    );
+    await db.execute(
+      'CREATE TABLE IF NOT EXISTS reading_days(local_date TEXT PRIMARY KEY, chapters_read INTEGER NOT NULL DEFAULT 0, verses_read INTEGER NOT NULL DEFAULT 0, reading_seconds INTEGER NOT NULL DEFAULT 0)',
+    );
+    await db.execute(
+      'CREATE TABLE IF NOT EXISTS milestones(milestone_key TEXT PRIMARY KEY, unlocked_at TEXT NOT NULL)',
+    );
+    await db.execute(
+      'CREATE TABLE IF NOT EXISTS journey_progress(journey_id TEXT PRIMARY KEY, started_at TEXT NOT NULL, completed_days TEXT NOT NULL DEFAULT \'\', completed_at TEXT)',
     );
   }
 }

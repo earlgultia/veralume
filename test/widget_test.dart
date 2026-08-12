@@ -4,14 +4,21 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:veralume/presentation/screens/app_shell.dart';
 
 void main() {
-  testWidgets('onboarding communicates offline features', (tester) async {
+  testWidgets('David welcomes first-time users and starts feature tutorial', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       const ProviderScope(child: MaterialApp(home: OnboardingScreen())),
     );
-    expect(find.text('VERALUME'), findsOneWidget);
-    expect(find.text('Offline Bible'), findsOneWidget);
-    expect(find.text('Search Scripture'), findsOneWidget);
-    expect(find.text('Begin reading'), findsOneWidget);
+    expect(find.text('Welcome to VERALUME'), findsOneWidget);
+    expect(find.textContaining('I’m David'), findsOneWidget);
+    expect(find.text('Show me around'), findsOneWidget);
+
+    await tester.tap(find.text('Show me around'));
+    await tester.pumpAndSettle();
+    expect(find.text('Read at your pace'), findsOneWidget);
+    expect(find.text('Bible reader'), findsOneWidget);
+    expect(find.text('Bible versions'), findsOneWidget);
   });
 
   testWidgets('empty state is accessible through bookmarks screen', (

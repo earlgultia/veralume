@@ -43,6 +43,10 @@ void main() {
     expect(preferences.getDouble('fontSize'), 18);
     expect(preferences.getBool('fullScreen'), isFalse);
     expect(preferences.getInt('defaultVersionId'), 3);
+
+    await controller.setDefaultVersion(5);
+    expect(controller.state.defaultVersionId, 5);
+    expect(preferences.getInt('defaultVersionId'), 5);
     controller.dispose();
   });
 }

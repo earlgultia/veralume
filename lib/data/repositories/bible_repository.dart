@@ -23,6 +23,26 @@ class BibleRepository {
         whereArgs: [versionId],
         orderBy: 'book_order',
       )).map(BibleBook.fromMap).toList();
+  Future<BibleBook?> book(int bookId) async {
+    final rows = await (await _db).query(
+      'books',
+      where: 'id=?',
+      whereArgs: [bookId],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : BibleBook.fromMap(rows.first);
+  }
+
+  Future<BibleBook?> bookByOrder(int versionId, int bookOrder) async {
+    final rows = await (await _db).query(
+      'books',
+      where: 'version_id=? AND book_order=?',
+      whereArgs: [versionId, bookOrder],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : BibleBook.fromMap(rows.first);
+  }
+
   Future<int> chapterCount(int bookId) async =>
       Sqflite.firstIntValue(
         await (await _db).rawQuery(
@@ -31,6 +51,14 @@ class BibleRepository {
         ),
       ) ??
       0;
+
+  Future<Map<int, int>> chapterCounts(int versionId) async => {
+    for (final row in await (await _db).rawQuery(
+      'SELECT b.book_order,count(c.id) chapter_count FROM books b LEFT JOIN chapters c ON c.book_id=b.id WHERE b.version_id=? GROUP BY b.id,b.book_order',
+      [versionId],
+    ))
+      row['book_order'] as int: row['chapter_count'] as int,
+  };
 
   Future<int?> equivalentBook(int bookId, int targetVersionId) async {
     final rows = await (await _db).rawQuery(
@@ -52,6 +80,41 @@ class BibleRepository {
   Future<BibleVerse?> verse(int id) async {
     final rows = await (await _db).rawQuery('$_select WHERE v.id=?', [id]);
     return rows.isEmpty ? null : BibleVerse.fromMap(rows.first);
+  }
+
+  Future<List<BibleVerse>> passageByReference(
+    String bookName,
+    int chapter, {
+    int? startVerse,
+    int? endVerse,
+    required int versionId,
+  }) async {
+    final normalized = bookName.toLowerCase().replaceAll(
+      RegExp(r'[^a-z0-9]'),
+      '',
+    );
+    final versionBooks = await books(versionId);
+    BibleBook? match;
+    for (final book in versionBooks) {
+      final name = book.name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+      final abbreviation = book.abbreviation.toLowerCase().replaceAll(
+        RegExp(r'[^a-z0-9]'),
+        '',
+      );
+      if (name == normalized ||
+          abbreviation == normalized ||
+          name == '${normalized}s') {
+        match = book;
+        break;
+      }
+    }
+    if (match == null) return [];
+    final verses = await this.chapter(match.id, chapter);
+    if (startVerse == null) return verses;
+    final last = endVerse ?? startVerse;
+    return verses
+        .where((verse) => verse.number >= startVerse && verse.number <= last)
+        .toList();
   }
 
   Future<List<BibleVerse>> randomVerses(
@@ -85,17 +148,37 @@ class BibleRepository {
     )).map(BibleVerse.fromMap).toList();
   }
 
-  Future<BibleVerse> dailyVerse(DateTime date) async {
+  Future<List<BibleVerse>> searchAnyTerms(
+    Iterable<String> terms, {
+    required int versionId,
+    int limit = 12,
+  }) async {
+    final cleanTerms = terms
+        .map((term) => term.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), ''))
+        .where((term) => term.length > 2)
+        .toSet()
+        .take(6)
+        .toList();
+    if (cleanTerms.isEmpty) return [];
+    final match = cleanTerms.map((term) => '"$term"').join(' OR ');
+    return (await (await _db).rawQuery(
+      '$_select JOIN verses_fts ON verses_fts.rowid=v.id WHERE verses_fts MATCH ? AND v.version_id=? ORDER BY bm25(verses_fts) LIMIT ?',
+      [match, versionId, limit],
+    )).map(BibleVerse.fromMap).toList();
+  }
+
+  Future<BibleVerse> dailyVerse(DateTime date, {int versionId = 1}) async {
     final count = Sqflite.firstIntValue(
       await (await _db).rawQuery(
-        'SELECT count(*) FROM verses WHERE version_id=1',
+        'SELECT count(*) FROM verses WHERE version_id=?',
+        [versionId],
       ),
     )!;
     final offset = (date.year * 372 + date.month * 31 + date.day) % count;
     return BibleVerse.fromMap(
       (await (await _db).rawQuery(
-        '$_select WHERE v.version_id=1 ORDER BY v.id LIMIT 1 OFFSET ?',
-        [offset],
+        '$_select WHERE v.version_id=? ORDER BY v.id LIMIT 1 OFFSET ?',
+        [versionId, offset],
       )).first,
     );
   }
