@@ -157,5 +157,13 @@ class AppDatabase {
     await db.execute(
       'CREATE TABLE IF NOT EXISTS last_light(id INTEGER PRIMARY KEY CHECK(id=1), verse_id INTEGER NOT NULL REFERENCES verses(id), saved_at TEXT NOT NULL, local_date TEXT NOT NULL)',
     );
+    // This is deliberately separate from bookmarks and notes: removing a
+    // memory verse must never affect the user's other saved Scripture.
+    await db.execute(
+      'CREATE TABLE IF NOT EXISTS memory_verses(id INTEGER PRIMARY KEY AUTOINCREMENT, verse_id INTEGER NOT NULL UNIQUE REFERENCES verses(id), created_at TEXT NOT NULL, practice_count INTEGER NOT NULL DEFAULT 0, successful_recalls INTEGER NOT NULL DEFAULT 0, failed_recalls INTEGER NOT NULL DEFAULT 0, last_practiced_at TEXT, last_successful_recall_at TEXT)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS memory_verses_recent ON memory_verses(last_practiced_at ASC)',
+    );
   }
 }

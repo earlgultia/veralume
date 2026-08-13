@@ -5,6 +5,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:veralume/data/repositories/bible_repository.dart';
 import 'package:veralume/data/database/app_database.dart';
 import 'package:veralume/domain/assistant/david_assistant.dart';
+import 'package:veralume/domain/memory/verse_memory.dart';
 
 void main() {
   sqfliteFfiInit();
@@ -189,6 +190,32 @@ void main() {
       (await repository.dailyVerse(date)).id,
       (await repository.dailyVerse(date)).id,
     );
+  });
+
+  test('memory verses stay local, deduplicate, and record recall outcomes',
+      () async {
+    final verse = (await repository.chapter(1, 1)).first;
+    await repository.saveMemoryVerse(verse.id);
+    await repository.saveMemoryVerse(verse.id);
+    expect(await repository.isMemoryVerse(verse.id), isTrue);
+    expect(await repository.memoryVerses(), hasLength(1));
+    await repository.recordMemoryPractice(verse.id, successful: true);
+    await repository.recordMemoryPractice(verse.id, successful: false);
+    final saved = (await repository.memoryVerses()).single;
+    expect(saved.practiceCount, 2);
+    expect(saved.successfulRecalls, 1);
+    expect(saved.failedRecalls, 1);
+    expect(saved.status.label, 'Practicing');
+    await repository.removeMemoryVerse(verse.id);
+    expect(await repository.memoryVerses(), isEmpty);
+  });
+
+  test('cloze normalization is forgiving and preserves multilingual tokens', () {
+    final exercise = ClozeExercise("Ang Diyos's pag-ibig ay dakila!");
+    expect(exercise.tokens, containsAll(["Diyos's", 'pag-ibig', 'dakila']));
+    expect(exercise.correct('PAG-IBIG ', 'pag-ibig'), isTrue);
+    expect(exercise.correct('mali', 'pag-ibig'), isFalse);
+    expect(exercise.blanks(), isNotEmpty);
   });
 
   test('Verse Lens context remains valid at chapter boundaries', () async {

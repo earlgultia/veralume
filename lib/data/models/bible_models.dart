@@ -123,3 +123,44 @@ class FocusSession {
   final DateTime createdAt;
   final DateTime? completedAt;
 }
+
+enum MemoryStatus { newVerse, practicing, remembered, mastered }
+
+extension MemoryStatusLabel on MemoryStatus {
+  String get label => switch (this) {
+    MemoryStatus.newVerse => 'New',
+    MemoryStatus.practicing => 'Practicing',
+    MemoryStatus.remembered => 'Remembered',
+    MemoryStatus.mastered => 'Mastered',
+  };
+}
+
+class MemoryVerse {
+  const MemoryVerse({
+    required this.id,
+    required this.verse,
+    required this.createdAt,
+    required this.practiceCount,
+    required this.successfulRecalls,
+    required this.failedRecalls,
+    this.lastPracticedAt,
+    this.lastSuccessfulRecallAt,
+  });
+  final int id, practiceCount, successfulRecalls, failedRecalls;
+  final BibleVerse verse;
+  final DateTime createdAt;
+  final DateTime? lastPracticedAt, lastSuccessfulRecallAt;
+  MemoryStatus get status => successfulRecalls >= 5
+      ? MemoryStatus.mastered
+      : successfulRecalls >= 3
+      ? MemoryStatus.remembered
+      : successfulRecalls >= 1
+      ? MemoryStatus.practicing
+      : MemoryStatus.newVerse;
+  double get progress => (successfulRecalls / 5).clamp(0, 1).toDouble();
+}
+
+class MemorySummary {
+  const MemorySummary(this.total, this.mastered, this.practicing, this.newVerses);
+  final int total, mastered, practicing, newVerses;
+}

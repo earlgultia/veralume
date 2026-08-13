@@ -257,6 +257,50 @@ class BibleRepository {
     '$_select JOIN (SELECT verse_id,max(accessed_at) last FROM reading_history GROUP BY verse_id ORDER BY last DESC LIMIT 20) h ON h.verse_id=v.id ORDER BY h.last DESC',
   )).map(BibleVerse.fromMap).toList();
   Future<void> clearHistory() async => (await _db).delete('reading_history');
+
+  Future<bool> isMemoryVerse(int verseId) async => (await (await _db).query(
+    'memory_verses', where: 'verse_id=?', whereArgs: [verseId], limit: 1,
+  )).isNotEmpty;
+
+  Future<void> saveMemoryVerse(int verseId) async {
+    await (await _db).insert('memory_verses', {
+      'verse_id': verseId,
+      'created_at': DateTime.now().toUtc().toIso8601String(),
+    }, conflictAlgorithm: ConflictAlgorithm.ignore);
+  }
+
+  Future<void> removeMemoryVerse(int verseId) async =>
+      (await _db).delete('memory_verses', where: 'verse_id=?', whereArgs: [verseId]);
+
+  Future<List<MemoryVerse>> memoryVerses({String query = ''}) async {
+    final term = query.trim();
+    final where = term.isEmpty ? '' : ' WHERE v.text LIKE ? OR b.name LIKE ? OR bv.abbreviation LIKE ?';
+    final args = term.isEmpty ? <Object?>[] : ['%$term%', '%$term%', '%$term%'];
+    final rows = await (await _db).rawQuery(
+      '''SELECT m.id memory_id,m.created_at,m.practice_count,m.successful_recalls,m.failed_recalls,m.last_practiced_at,m.last_successful_recall_at,v.*,b.name book_name,bv.abbreviation version_abbreviation
+      FROM memory_verses m JOIN verses v ON v.id=m.verse_id JOIN books b ON b.id=v.book_id JOIN bible_versions bv ON bv.id=v.version_id$where
+      ORDER BY COALESCE(m.last_practiced_at,m.created_at) ASC''', args);
+    return rows.map((row) => MemoryVerse(
+      id: row['memory_id'] as int, verse: BibleVerse.fromMap(row),
+      createdAt: DateTime.parse(row['created_at'] as String).toLocal(),
+      practiceCount: row['practice_count'] as int,
+      successfulRecalls: row['successful_recalls'] as int,
+      failedRecalls: row['failed_recalls'] as int,
+      lastPracticedAt: row['last_practiced_at'] == null ? null : DateTime.parse(row['last_practiced_at'] as String).toLocal(),
+      lastSuccessfulRecallAt: row['last_successful_recall_at'] == null ? null : DateTime.parse(row['last_successful_recall_at'] as String).toLocal(),
+    )).toList();
+  }
+
+  Future<void> recordMemoryPractice(int verseId, {required bool successful}) async {
+    final now = DateTime.now().toUtc().toIso8601String();
+    // Use a parameterized update so the counters remain correct offline.
+    await (await _db).rawUpdate(
+      successful
+          ? 'UPDATE memory_verses SET practice_count=practice_count+1,successful_recalls=successful_recalls+1,last_practiced_at=?,last_successful_recall_at=? WHERE verse_id=?'
+          : 'UPDATE memory_verses SET practice_count=practice_count+1,failed_recalls=failed_recalls+1,last_practiced_at=? WHERE verse_id=?',
+      successful ? [now, now, verseId] : [now, verseId],
+    );
+  }
   Future<LastLight?> lastLight() async {
     final rows = await (await _db).rawQuery(
       '$_select JOIN last_light l ON l.verse_id=v.id WHERE l.id=1',

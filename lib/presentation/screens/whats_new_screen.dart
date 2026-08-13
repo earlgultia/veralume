@@ -8,6 +8,26 @@ class WhatsNewScreen extends StatelessWidget {
 
   static const _features = <(IconData, String, String)>[
     (
+      Icons.psychology_alt_outlined,
+      'Verse Memory',
+      'Save the Scriptures you want to carry with you.',
+    ),
+    (
+      Icons.edit_note_outlined,
+      'Recall Practice',
+      'Practice with gentle fill-in-the-blank exercises.',
+    ),
+    (
+      Icons.bar_chart_rounded,
+      'Memory Progress',
+      'See which verses are New, Practicing, Remembered, or Mastered.',
+    ),
+    (
+      Icons.offline_bolt_outlined,
+      'Private by Design',
+      'Memory verses and practice history stay on your device.',
+    ),
+    (
       Icons.nightlight_round,
       'Quiet Reading',
       'A peaceful, distraction-free way to read Scripture at night.',
@@ -81,7 +101,7 @@ class WhatsNewScreen extends StatelessWidget {
             Semantics(
               header: true,
               child: Text(
-                'VERALUME 1.4.8',
+                'VERALUME 1.4.9',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.labelLarge?.copyWith(
                   color: AppTheme.gold,
@@ -92,7 +112,7 @@ class WhatsNewScreen extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'Quiet Light',
+              'Verse Memory',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                 fontFamily: 'serif',
@@ -101,7 +121,7 @@ class WhatsNewScreen extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             const Text(
-              'Read the Word. Quiet your heart. Rest in His presence.',
+              'Carry the Word with you.',
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 26),

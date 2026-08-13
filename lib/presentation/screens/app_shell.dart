@@ -16,6 +16,7 @@ import 'journey_screens.dart';
 import 'focus_screen.dart';
 import 'whats_new_screen.dart';
 import 'verse_lens_screen.dart';
+import 'memory_verses_screen.dart';
 
 class OnboardingScreen extends ConsumerStatefulWidget {
   const OnboardingScreen({super.key});
@@ -797,6 +798,19 @@ class HomeScreen extends ConsumerWidget {
                         () => Navigator.of(context).push(
                           MaterialPageRoute(
                             builder: (_) => const NotesScreen(),
+                          ),
+                        ),
+                      ),
+                      _HomeAction(
+                        half,
+                        'Memory Verses',
+                        'Practice Scripture',
+                        Icons.psychology_alt_outlined,
+                        () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => MemoryVersesScreen(
+                              openVerse: openVerse,
+                            ),
                           ),
                         ),
                       ),
@@ -2668,6 +2682,24 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
             ),
             ListTile(
               leading: const Icon(Icons.psychology_alt_outlined),
+              title: const Text('Remember'),
+              enabled: selectedVerses.length == 1,
+              subtitle: const Text('Save this verse for private recall practice'),
+              onTap: selectedVerses.length != 1 ? null : () async {
+                final already = await repo.isMemoryVerse(first.id);
+                if (already) {
+                  if (c.mounted) Navigator.pop(c);
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Already in Memory. Open Memory Verses to practice it.')));
+                  return;
+                }
+                await repo.saveMemoryVerse(first.id);
+                HapticFeedback.lightImpact();
+                if (c.mounted) Navigator.pop(c);
+                if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Verse saved to Memory.')));
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.psychology_alt_outlined),
               title: const Text('Ask David'),
               enabled: selectedVerses.length == 1,
               onTap: selectedVerses.length != 1
@@ -4246,8 +4278,24 @@ class SettingsScreen extends ConsumerWidget {
             ),
           ),
           const _Section('Data'),
-          ListTile(
-            leading: const Icon(Icons.edit_note_outlined),
+            ListTile(
+              leading: const Icon(Icons.psychology_alt_outlined),
+              title: const Text('Memory Verses'),
+              subtitle: const Text('Practice Scripture privately, offline'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => MemoryVersesScreen(
+                    openVerse: (verse) => openReader(
+                      context, ref, verse.bookId, verse.chapter,
+                      focusVerse: verse.number,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.edit_note_outlined),
             title: const Text('My Reflections'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => Navigator.of(context).push(
@@ -4299,7 +4347,7 @@ class SettingsScreen extends ConsumerWidget {
               color: AppTheme.gold,
             ),
             title: const Text('What’s New'),
-            subtitle: const Text('Veralume 1.4.7 · Verse Lens'),
+            subtitle: const Text('Veralume 1.4.9 · Verse Memory'),
             trailing: const Icon(Icons.chevron_right_rounded),
             onTap: () => Navigator.of(
               context,
@@ -4310,7 +4358,7 @@ class SettingsScreen extends ConsumerWidget {
             title: Text('Veralume'),
             subtitle: Text(
               'Truth · Light · Scripture\n'
-              'Version 1.4.7 · Verse Lens\n'
+              'Version 1.4.9 · Verse Memory\n'
               'ArkByte Technologies',
             ),
           ),
