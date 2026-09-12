@@ -9,23 +9,23 @@ class WhatsNewScreen extends StatelessWidget {
   static const _features = <(IconData, String, String)>[
     (
       Icons.psychology_alt_outlined,
-      'Verse Memory',
-      'Save the Scriptures you want to carry with you.',
+      'Today’s Word',
+      'A deeper daily Scripture experience built around one meaningful passage.',
     ),
     (
       Icons.edit_note_outlined,
-      'Recall Practice',
-      'Practice with gentle fill-in-the-blank exercises.',
+      'Read · Understand · Reflect',
+      'Slow down and engage with Scripture through reading and reflection.',
     ),
     (
       Icons.bar_chart_rounded,
-      'Memory Progress',
-      'See which verses are New, Practicing, Remembered, or Mastered.',
+      'Apply',
+      'Turn Scripture into a practical action for your day.',
     ),
     (
       Icons.offline_bolt_outlined,
-      'Private by Design',
-      'Memory verses and practice history stay on your device.',
+      'Pray',
+      'Respond to God’s Word with your own private prayer.',
     ),
     (
       Icons.nightlight_round,
@@ -101,7 +101,7 @@ class WhatsNewScreen extends StatelessWidget {
             Semantics(
               header: true,
               child: Text(
-                'VERALUME 1.4.9',
+                'VERALUME 1.5.1 • RADIANT',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.labelLarge?.copyWith(
                   color: AppTheme.gold,
@@ -112,7 +112,7 @@ class WhatsNewScreen extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'Verse Memory',
+              'LIVING WORD',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                 fontFamily: 'serif',
@@ -121,7 +121,7 @@ class WhatsNewScreen extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             const Text(
-              'Carry the Word with you.',
+              'Don’t just read Scripture. Live it.',
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 26),

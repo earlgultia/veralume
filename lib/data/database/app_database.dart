@@ -49,6 +49,7 @@ class AppDatabase {
         'highlights',
         'notes',
         'reading_history',
+        'memory_verses',
       ]) {
         try {
           final rows = await previous.rawQuery(
@@ -164,6 +165,23 @@ class AppDatabase {
     );
     await db.execute(
       'CREATE INDEX IF NOT EXISTS memory_verses_recent ON memory_verses(last_practiced_at ASC)',
+    );
+    // Living Word only stores its private session and application state here.
+    // Reflections, prayers, and memory verses continue using their established tables.
+    await db.execute(
+      'CREATE TABLE IF NOT EXISTS living_word_sessions(id INTEGER PRIMARY KEY AUTOINCREMENT, local_date TEXT NOT NULL, verse_id INTEGER NOT NULL REFERENCES verses(id), current_stage INTEGER NOT NULL DEFAULT 0, read_completed INTEGER NOT NULL DEFAULT 0, understand_completed INTEGER NOT NULL DEFAULT 0, reflect_completed INTEGER NOT NULL DEFAULT 0, remember_completed INTEGER NOT NULL DEFAULT 0, apply_completed INTEGER NOT NULL DEFAULT 0, pray_completed INTEGER NOT NULL DEFAULT 0, started_at TEXT NOT NULL, updated_at TEXT NOT NULL, completed_at TEXT)',
+    );
+    await db.execute(
+      'CREATE UNIQUE INDEX IF NOT EXISTS living_word_date_verse ON living_word_sessions(local_date, verse_id)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS living_word_recent ON living_word_sessions(updated_at DESC)',
+    );
+    await db.execute(
+      'CREATE TABLE IF NOT EXISTS applications(id INTEGER PRIMARY KEY AUTOINCREMENT, living_word_session_id INTEGER REFERENCES living_word_sessions(id) ON DELETE SET NULL, verse_id INTEGER NOT NULL REFERENCES verses(id), content TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS applications_recent ON applications(updated_at DESC)',
     );
   }
 }

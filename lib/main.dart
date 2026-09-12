@@ -17,9 +17,8 @@ class VeralumeApp extends ConsumerWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Veralume',
-      theme: AppTheme.light(),
-      darkTheme: AppTheme.dark(),
-      themeMode: settings.themeMode,
+      theme: AppTheme.forTheme(settings.theme),
+      themeMode: ThemeMode.light,
       home: !settings.loaded
           ? const _SplashScreen()
           : settings.onboarded

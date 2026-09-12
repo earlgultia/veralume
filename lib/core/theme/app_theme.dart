@@ -1,48 +1,349 @@
 import 'package:flutter/material.dart';
 
+enum VeralumeTheme {
+  royalPurple('Royal Purple'),
+  oceanBlue('Ocean Blue'),
+  emerald('Emerald'),
+  sunrise('Sunrise'),
+  rose('Rose'),
+  crimson('Crimson'),
+  sky('Sky'),
+  amber('Amber'),
+  teal('Teal'),
+  midnight('Midnight');
+
+  const VeralumeTheme(this.label);
+  final String label;
+}
+
+@immutable
+class VeralumePalette extends ThemeExtension<VeralumePalette> {
+  const VeralumePalette(
+    this.primary,
+    this.secondary,
+    this.accent,
+    this.background,
+    this.surface,
+    this.card,
+    this.text,
+    this.secondaryText,
+    this.border,
+    this.navigation,
+    this.highlight,
+    this.david,
+    this.reader,
+    this.stories,
+    this.quizzes,
+    this.settings,
+    this.footer,
+    this.brightness,
+  );
+  final Color primary,
+      secondary,
+      accent,
+      background,
+      surface,
+      card,
+      text,
+      secondaryText,
+      border,
+      navigation,
+      highlight,
+      david,
+      reader,
+      stories,
+      quizzes,
+      settings,
+      footer;
+  final Brightness brightness;
+  @override
+  VeralumePalette copyWith() => this;
+  @override
+  VeralumePalette lerp(covariant VeralumePalette? other, double t) =>
+      other == null || t < .5 ? this : other;
+}
+
 class AppTheme {
   static const gold = Color(0xFFD9B86C),
       navy = Color(0xFF111827),
       cream = Color(0xFFFFFBF2);
-  static ThemeData light() => _theme(
-    Brightness.light,
-    const Color(0xFFF7F0E4),
-    const Color(0xFF252119),
-  );
-  static ThemeData dark() =>
-      _theme(Brightness.dark, const Color(0xFF0E1420), const Color(0xFFF5EEDC));
-  static ThemeData _theme(Brightness brightness, Color surface, Color ink) {
-    final scheme = ColorScheme.fromSeed(
-      seedColor: gold,
-      brightness: brightness,
-      surface: surface,
-    );
-    return ThemeData(
+  static const palettes = <VeralumeTheme, VeralumePalette>{
+    VeralumeTheme.royalPurple: VeralumePalette(
+      Color(0xFF7251B5),
+      Color(0xFF9D79D6),
+      Color(0xFFE0B85A),
+      Color(0xFFF8F5FC),
+      Color(0xFFFFFBFF),
+      Color(0xFFF0EAF8),
+      Color(0xFF251B32),
+      Color(0xFF695D75),
+      Color(0xFFD9CFE5),
+      Color(0xFFF7F1FC),
+      Color(0xFFFFE59A),
+      Color(0xFF6842A5),
+      Color(0xFFFFFCF6),
+      Color(0xFF8A5CB5),
+      Color(0xFFC08A2C),
+      Color(0xFF7251B5),
+      Color(0xFF2C1D3C),
+      Brightness.light,
+    ),
+    VeralumeTheme.oceanBlue: VeralumePalette(
+      Color(0xFF1769AA),
+      Color(0xFF3C8DCA),
+      Color(0xFF56C1C8),
+      Color(0xFFF2F8FC),
+      Color(0xFFFBFDFF),
+      Color(0xFFE5F1F8),
+      Color(0xFF142735),
+      Color(0xFF536B7A),
+      Color(0xFFC8DCE8),
+      Color(0xFFEDF6FB),
+      Color(0xFFA9E4E7),
+      Color(0xFF145A91),
+      Color(0xFFFAFDFE),
+      Color(0xFF287FB4),
+      Color(0xFF168C91),
+      Color(0xFF1769AA),
+      Color(0xFF102F45),
+      Brightness.light,
+    ),
+    VeralumeTheme.emerald: VeralumePalette(
+      Color(0xFF167D5A),
+      Color(0xFF43A47D),
+      Color(0xFFD2A93B),
+      Color(0xFFF3F9F5),
+      Color(0xFFFCFEFC),
+      Color(0xFFE3F1E9),
+      Color(0xFF173128),
+      Color(0xFF587166),
+      Color(0xFFC7DED1),
+      Color(0xFFEDF7F1),
+      Color(0xFFF8E39A),
+      Color(0xFF126849),
+      Color(0xFFFCFFF9),
+      Color(0xFF2C8B65),
+      Color(0xFFB27D16),
+      Color(0xFF167D5A),
+      Color(0xFF123B2C),
+      Brightness.light,
+    ),
+    VeralumeTheme.sunrise: VeralumePalette(
+      Color(0xFFD56B32),
+      Color(0xFFE79A55),
+      Color(0xFFB94E67),
+      Color(0xFFFFF8F1),
+      Color(0xFFFFFDFC),
+      Color(0xFFFBE9DA),
+      Color(0xFF38251C),
+      Color(0xFF806557),
+      Color(0xFFEACFBA),
+      Color(0xFFFFF2E7),
+      Color(0xFFFFD68A),
+      Color(0xFFB9532B),
+      Color(0xFFFFFCF7),
+      Color(0xFFD8753F),
+      Color(0xFFB94E67),
+      Color(0xFFC65E2C),
+      Color(0xFF4A291C),
+      Brightness.light,
+    ),
+    VeralumeTheme.rose: VeralumePalette(
+      Color(0xFFB84F74),
+      Color(0xFFD17B98),
+      Color(0xFF8D6AB8),
+      Color(0xFFFFF6F8),
+      Color(0xFFFFFCFD),
+      Color(0xFFF8E5EB),
+      Color(0xFF39212A),
+      Color(0xFF80616D),
+      Color(0xFFE7CAD4),
+      Color(0xFFFDF0F4),
+      Color(0xFFFFD4A8),
+      Color(0xFF9C4162),
+      Color(0xFFFFFCFA),
+      Color(0xFFC05B7D),
+      Color(0xFF8060A8),
+      Color(0xFFB84F74),
+      Color(0xFF482432),
+      Brightness.light,
+    ),
+    VeralumeTheme.crimson: VeralumePalette(
+      Color(0xFF9E2A3B),
+      Color(0xFFC4515D),
+      Color(0xFFD8A63A),
+      Color(0xFFFBF5F4),
+      Color(0xFFFFFCFB),
+      Color(0xFFF4E4E3),
+      Color(0xFF351D20),
+      Color(0xFF785D60),
+      Color(0xFFE2C8C8),
+      Color(0xFFF9EEEE),
+      Color(0xFFF5D98A),
+      Color(0xFF862231),
+      Color(0xFFFFFBF7),
+      Color(0xFFAA3748),
+      Color(0xFFB18122),
+      Color(0xFF9E2A3B),
+      Color(0xFF421D24),
+      Brightness.light,
+    ),
+    VeralumeTheme.sky: VeralumePalette(
+      Color(0xFF287DB8),
+      Color(0xFF69A9D1),
+      Color(0xFFF2A65A),
+      Color(0xFFF4FAFE),
+      Color(0xFFFCFEFF),
+      Color(0xFFE5F3FA),
+      Color(0xFF18303F),
+      Color(0xFF58717F),
+      Color(0xFFC9DFEA),
+      Color(0xFFECF7FC),
+      Color(0xFFFFD9A6),
+      Color(0xFF216B9D),
+      Color(0xFFFCFEFE),
+      Color(0xFF3D8CC0),
+      Color(0xFFD17F30),
+      Color(0xFF287DB8),
+      Color(0xFF17384D),
+      Brightness.light,
+    ),
+    VeralumeTheme.amber: VeralumePalette(
+      Color(0xFF9B6912),
+      Color(0xFFC58A21),
+      Color(0xFF386A64),
+      Color(0xFFFFFAEF),
+      Color(0xFFFFFDF8),
+      Color(0xFFF7EBCF),
+      Color(0xFF342A18),
+      Color(0xFF75684F),
+      Color(0xFFE5D4AC),
+      Color(0xFFFCF3DD),
+      Color(0xFFFFD86A),
+      Color(0xFF7D5510),
+      Color(0xFFFFFDF7),
+      Color(0xFFA97518),
+      Color(0xFF386A64),
+      Color(0xFF91610F),
+      Color(0xFF3D3018),
+      Brightness.light,
+    ),
+    VeralumeTheme.teal: VeralumePalette(
+      Color(0xFF087F78),
+      Color(0xFF42A69E),
+      Color(0xFFE2A84B),
+      Color(0xFFF1FAF9),
+      Color(0xFFFBFEFD),
+      Color(0xFFDFF2F0),
+      Color(0xFF143330),
+      Color(0xFF53726E),
+      Color(0xFFBFDFDB),
+      Color(0xFFEAF7F5),
+      Color(0xFFFFDD8A),
+      Color(0xFF076A64),
+      Color(0xFFFAFEFC),
+      Color(0xFF188D84),
+      Color(0xFFC18427),
+      Color(0xFF087F78),
+      Color(0xFF103D39),
+      Brightness.light,
+    ),
+    VeralumeTheme.midnight: VeralumePalette(
+      Color(0xFF9B8BE8),
+      Color(0xFF5CA6D6),
+      Color(0xFFE2B85B),
+      Color(0xFF0B1220),
+      Color(0xFF111B2D),
+      Color(0xFF18253A),
+      Color(0xFFF3F0FA),
+      Color(0xFFAFB8C9),
+      Color(0xFF2A3A52),
+      Color(0xFF101A2A),
+      Color(0xFF655522),
+      Color(0xFF7968CC),
+      Color(0xFF0E1827),
+      Color(0xFF6D79CA),
+      Color(0xFFC39335),
+      Color(0xFF8979D5),
+      Color(0xFF070C15),
+      Brightness.dark,
+    ),
+  };
+  static ThemeData forTheme(VeralumeTheme selected) {
+    final p = palettes[selected]!;
+    final scheme =
+        ColorScheme.fromSeed(
+          seedColor: p.primary,
+          brightness: p.brightness,
+          surface: p.surface,
+        ).copyWith(
+          primary: p.primary,
+          secondary: p.secondary,
+          tertiary: p.accent,
+          outline: p.border,
+          surfaceContainerHighest: p.card,
+        );
+    final base = ThemeData(
       useMaterial3: true,
-      brightness: brightness,
       colorScheme: scheme,
-      scaffoldBackgroundColor: surface,
-      textTheme: ThemeData(
-        brightness: brightness,
-      ).textTheme.apply(bodyColor: ink, displayColor: ink),
+      brightness: p.brightness,
+    );
+    final rounded = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(20),
+    );
+    return base.copyWith(
+      scaffoldBackgroundColor: p.background,
+      extensions: [p],
+      textTheme: base.textTheme.apply(bodyColor: p.text, displayColor: p.text),
+      appBarTheme: AppBarTheme(
+        backgroundColor: Colors.transparent,
+        foregroundColor: p.text,
+      ),
       navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: scheme.surface.withValues(alpha: .9),
-        indicatorColor: gold.withValues(alpha: .22),
+        backgroundColor: p.navigation,
+        indicatorColor: p.primary.withValues(alpha: .18),
         height: 72,
       ),
-      cardTheme: CardThemeData(
-        elevation: 0,
-        color: scheme.surfaceContainerHighest.withValues(alpha: .55),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      cardTheme: CardThemeData(elevation: 0, color: p.card, shape: rounded),
+      dialogTheme: DialogThemeData(
+        backgroundColor: p.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+      ),
+      bottomSheetTheme: BottomSheetThemeData(
+        backgroundColor: p.surface,
+        modalBackgroundColor: p.surface,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: scheme.surfaceContainerHighest.withValues(alpha: .55),
+        fillColor: p.card,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(18),
           borderSide: BorderSide.none,
         ),
       ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        ),
+      ),
+      progressIndicatorTheme: ProgressIndicatorThemeData(color: p.primary),
+      floatingActionButtonTheme: FloatingActionButtonThemeData(
+        backgroundColor: p.primary,
+        foregroundColor: scheme.onPrimary,
+      ),
     );
   }
+
+  static ThemeData light() => forTheme(VeralumeTheme.royalPurple);
+  static ThemeData dark() => forTheme(VeralumeTheme.midnight);
+}
+
+extension VeralumeThemeContext on BuildContext {
+  VeralumePalette get palette => Theme.of(this).extension<VeralumePalette>()!;
 }

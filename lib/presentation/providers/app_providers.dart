@@ -3,13 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/repositories/bible_repository.dart';
 import '../../data/repositories/journey_repository.dart';
+import '../../core/theme/app_theme.dart';
 
 final bibleRepositoryProvider = Provider((ref) => BibleRepository());
 final journeyRepositoryProvider = Provider((ref) => JourneyRepository());
 
 class ReadingSettings {
   const ReadingSettings({
-    this.themeMode = ThemeMode.system,
+    this.theme = VeralumeTheme.royalPurple,
     this.fontSize = 19,
     this.lineHeight = 1.65,
     this.serif = true,
@@ -26,7 +27,7 @@ class ReadingSettings {
     this.defaultVersionId = 1,
     this.loaded = false,
   });
-  final ThemeMode themeMode;
+  final VeralumeTheme theme;
   final double fontSize, lineHeight;
   final bool serif,
       showVerseNumbers,
@@ -40,7 +41,7 @@ class ReadingSettings {
   final String readingWidth, quietTone, quietControls;
   final int defaultVersionId;
   ReadingSettings copyWith({
-    ThemeMode? themeMode,
+    VeralumeTheme? theme,
     double? fontSize,
     double? lineHeight,
     bool? serif,
@@ -57,7 +58,7 @@ class ReadingSettings {
     int? defaultVersionId,
     bool? loaded,
   }) => ReadingSettings(
-    themeMode: themeMode ?? this.themeMode,
+    theme: theme ?? this.theme,
     fontSize: fontSize ?? this.fontSize,
     lineHeight: lineHeight ?? this.lineHeight,
     serif: serif ?? this.serif,
@@ -83,7 +84,12 @@ class SettingsController extends StateNotifier<ReadingSettings> {
   Future<void> _load() async {
     final p = await SharedPreferences.getInstance();
     state = ReadingSettings(
-      themeMode: ThemeMode.values[p.getInt('theme') ?? 0],
+      theme:
+          VeralumeTheme.values[(p.getInt('radiantTheme') ??
+                  ((p.getInt('theme') == ThemeMode.dark.index)
+                      ? VeralumeTheme.midnight.index
+                      : VeralumeTheme.royalPurple.index))
+              .clamp(0, VeralumeTheme.values.length - 1)],
       fontSize: p.getDouble('fontSize') ?? 19,
       lineHeight: p.getDouble('lineHeight') ?? 1.65,
       serif: p.getBool('serif') ?? true,
@@ -106,7 +112,7 @@ class SettingsController extends StateNotifier<ReadingSettings> {
     state = value;
     final p = await SharedPreferences.getInstance();
     await Future.wait([
-      p.setInt('theme', value.themeMode.index),
+      p.setInt('radiantTheme', value.theme.index),
       p.setDouble('fontSize', value.fontSize),
       p.setDouble('lineHeight', value.lineHeight),
       p.setBool('serif', value.serif),

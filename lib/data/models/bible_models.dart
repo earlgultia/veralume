@@ -124,9 +124,12 @@ class FocusSession {
   final DateTime? completedAt;
 }
 
-enum MemoryStatus { newVerse, practicing, remembered, mastered }
+enum MemoryStatus {
+  newVerse,
+  practicing,
+  remembered,
+  mastered;
 
-extension MemoryStatusLabel on MemoryStatus {
   String get label => switch (this) {
     MemoryStatus.newVerse => 'New',
     MemoryStatus.practicing => 'Practicing',
@@ -161,6 +164,11 @@ class MemoryVerse {
 }
 
 class MemorySummary {
-  const MemorySummary(this.total, this.mastered, this.practicing, this.newVerses);
+  const MemorySummary(
+    this.total,
+    this.mastered,
+    this.practicing,
+    this.newVerses,
+  );
   final int total, mastered, practicing, newVerses;
 }

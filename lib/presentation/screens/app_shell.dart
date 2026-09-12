@@ -7,6 +7,8 @@ import 'package:share_plus/share_plus.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/models/bible_models.dart';
 import '../../data/models/journey_models.dart';
+import '../../data/models/living_word_models.dart';
+import '../../data/services/online_david_service.dart';
 import '../../domain/assistant/david_assistant.dart';
 import '../../domain/journey/journey_catalog.dart';
 import '../../domain/quiz/bible_quiz.dart';
@@ -17,6 +19,7 @@ import 'focus_screen.dart';
 import 'whats_new_screen.dart';
 import 'verse_lens_screen.dart';
 import 'memory_verses_screen.dart';
+import 'living_word_screen.dart';
 
 class OnboardingScreen extends ConsumerStatefulWidget {
   const OnboardingScreen({super.key});
@@ -501,6 +504,7 @@ class _AppShellState extends ConsumerState<AppShell> {
 
   @override
   Widget build(BuildContext context) {
+    const primaryTabs = [0, 1, 3, 4, 5];
     final screens = [
       HomeScreen(
         onNavigate: (i) => setState(() => index = i),
@@ -519,19 +523,22 @@ class _AppShellState extends ConsumerState<AppShell> {
     ];
     return Scaffold(
       body: IndexedStack(index: index, children: screens),
-      floatingActionButton: FloatingActionButton.small(
+      floatingActionButton: FloatingActionButton.extended(
         tooltip: 'Ask David',
         onPressed: () => Navigator.of(
           context,
         ).push(MaterialPageRoute(builder: (_) => const DavidScreen())),
-        child: const Icon(Icons.chat_bubble_outline_rounded),
+        icon: const Icon(Icons.chat_bubble_outline_rounded),
+        label: const Text('Ask David'),
       ),
       bottomNavigationBar: SafeArea(
         top: false,
         child: NavigationBar(
-          selectedIndex: index,
-          onDestinationSelected: (i) => setState(() => index = i),
-          labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
+          selectedIndex: primaryTabs.contains(index)
+              ? primaryTabs.indexOf(index)
+              : 0,
+          onDestinationSelected: (i) => setState(() => index = primaryTabs[i]),
+          labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
           destinations: const [
             NavigationDestination(
               icon: Icon(Icons.home_outlined),
@@ -542,11 +549,6 @@ class _AppShellState extends ConsumerState<AppShell> {
               icon: Icon(Icons.auto_stories_outlined),
               selectedIcon: Icon(Icons.auto_stories),
               label: 'Bible',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.route_outlined),
-              selectedIcon: Icon(Icons.route_rounded),
-              label: 'Journey',
             ),
             NavigationDestination(icon: Icon(Icons.search), label: 'Search'),
             NavigationDestination(
@@ -597,7 +599,15 @@ class PageFrame extends StatelessWidget {
         ),
         SliverPadding(
           padding: const EdgeInsets.fromLTRB(18, 0, 18, 100),
-          sliver: SliverToBoxAdapter(child: child),
+          sliver: SliverToBoxAdapter(
+            child: Column(
+              children: [
+                child,
+                const SizedBox(height: 36),
+                const RadiantFooter(),
+              ],
+            ),
+          ),
         ),
       ],
     ),
@@ -616,6 +626,38 @@ class HomeScreen extends ConsumerWidget {
   final OpenJourneyPassage openPassage;
   final Future<void> Function(BibleVerse verse) openVerse;
   final Future<void> Function(BibleVerse verse) openQuietVerse;
+
+  Future<void> _openLivingWord(
+    BuildContext context,
+    WidgetRef ref, {
+    LivingWordSession? session,
+  }) async {
+    final active =
+        session ??
+        await ref
+            .read(bibleRepositoryProvider)
+            .beginLivingWord(
+              DateTime.now(),
+              ref.read(settingsProvider).defaultVersionId,
+            );
+    if (!context.mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => LivingWordScreen(
+          session: active,
+          openVerse: openVerse,
+          askDavid: (verse) => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => DavidScreen(
+                initialQuestion:
+                    'Help me understand ${verse.reference}.\n\n${verse.text}',
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -660,6 +702,48 @@ class HomeScreen extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _HomeHero(greeting: greeting),
+              const SizedBox(height: 16),
+              GlassCard(
+                onTap: () => _openLivingWord(context, ref),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'TODAY\'S WORD',
+                      style: TextStyle(
+                        color: AppTheme.gold,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.3,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      daily?.reference ?? 'Scripture',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      daily == null
+                          ? 'A deeper moment with Scripture.'
+                          : '“${daily.text}”',
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontFamily: 'serif', height: 1.45),
+                    ),
+                    const SizedBox(height: 14),
+                    const Text(
+                      'Read · Understand · Reflect · Remember · Apply · Pray',
+                    ),
+                    const SizedBox(height: 12),
+                    const FilledButton(
+                      onPressed: null,
+                      child: Text('Begin Today\'s Word'),
+                    ),
+                  ],
+                ),
+              ),
               const SizedBox(height: 16),
               _HomeJourneyCard(stats: stats, onTap: () => onNavigate(2)),
               if (history.isNotEmpty) ...[
@@ -808,8 +892,24 @@ class HomeScreen extends ConsumerWidget {
                         Icons.psychology_alt_outlined,
                         () => Navigator.of(context).push(
                           MaterialPageRoute(
-                            builder: (_) => MemoryVersesScreen(
-                              openVerse: openVerse,
+                            builder: (_) =>
+                                MemoryVersesScreen(openVerse: openVerse),
+                          ),
+                        ),
+                      ),
+                      _HomeAction(
+                        half,
+                        'My Living Word',
+                        'Private reflections and actions',
+                        Icons.menu_book_outlined,
+                        () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => LivingWordHistoryScreen(
+                              open: (session) => _openLivingWord(
+                                context,
+                                ref,
+                                session: session,
+                              ),
                             ),
                           ),
                         ),
@@ -907,11 +1007,15 @@ class _BibleStory {
     this.subtitle,
     this.summary,
     this.icon,
-    this.passages,
-  );
+    this.passages, {
+    this.people = const [],
+    this.lessons = const [],
+    this.related = const [],
+  });
   final String title, subtitle, summary;
   final IconData icon;
   final List<_StoryPassage> passages;
+  final List<String> people, lessons, related;
 }
 
 const _bibleStories = <_BibleStory>[
@@ -1097,6 +1201,134 @@ const _bibleStories = <_BibleStory>[
     Icons.flash_on_rounded,
     [_StoryPassage(44, 9, 1, 'Acts 9:1–31 · Saul’s life is changed')],
   ),
+  _BibleStory(
+    'Ruth and Naomi',
+    'Loyal love and redemption',
+    'Ruth remained faithfully beside Naomi, gathered grain in Bethlehem, and found kindness in Boaz. Their story traces God’s quiet provision through loyalty and redemption.',
+    Icons.spa_rounded,
+    [
+      _StoryPassage(8, 1, 1, 'Ruth 1 • Ruth stays with Naomi'),
+      _StoryPassage(8, 4, 1, 'Ruth 4 • Boaz redeems'),
+    ],
+    people: ['Ruth', 'Naomi', 'Boaz'],
+    lessons: ['Faithfulness matters', 'God works through ordinary kindness'],
+    related: ['The Birth of Jesus'],
+  ),
+  _BibleStory(
+    'Samson',
+    'Strength and surrender',
+    'God gave Samson extraordinary strength, yet his impulsive choices brought loss. In his final prayer he turned again to God.',
+    Icons.fitness_center_rounded,
+    [
+      _StoryPassage(7, 13, 1, 'Judges 13 • Samson’s birth'),
+      _StoryPassage(7, 16, 1, 'Judges 16 • Samson’s final stand'),
+    ],
+    people: ['Samson', 'Delilah'],
+    lessons: ['Gifts need faithful character', 'God hears honest repentance'],
+  ),
+  _BibleStory(
+    'Jesus Is Baptized',
+    'The beloved Son begins his ministry',
+    'Jesus came to John at the Jordan and was baptized. The Spirit descended like a dove and the Father declared his delight in his Son.',
+    Icons.water_rounded,
+    [_StoryPassage(40, 3, 13, 'Matthew 3:13–17 • Jesus is baptized')],
+    people: ['Jesus', 'John the Baptist'],
+    lessons: ['Jesus identifies with humanity', 'God delights in his Son'],
+  ),
+  _BibleStory(
+    'Jesus Is Tempted',
+    'Faithful in the wilderness',
+    'After fasting forty days, Jesus resisted the tempter by trusting and speaking God’s Word.',
+    Icons.landscape_rounded,
+    [_StoryPassage(40, 4, 1, 'Matthew 4:1–11 • Jesus resists temptation')],
+    people: ['Jesus'],
+    lessons: [
+      'Scripture strengthens resistance',
+      'Faithfulness matters in private',
+    ],
+  ),
+  _BibleStory(
+    'Calling the Disciples',
+    'Ordinary people follow Jesus',
+    'Jesus called fishermen and others to leave their old lives, learn from him, and become fishers of people.',
+    Icons.group_add_rounded,
+    [_StoryPassage(42, 5, 1, 'Luke 5:1–11 • The first disciples')],
+    people: ['Jesus', 'Peter', 'James', 'John'],
+    lessons: ['Jesus calls ordinary people', 'Discipleship is active trust'],
+  ),
+  _BibleStory(
+    'The Sermon on the Mount',
+    'Life in God’s kingdom',
+    'Jesus taught about blessing, prayer, love of enemies, trust, and building life upon his words.',
+    Icons.record_voice_over_rounded,
+    [_StoryPassage(40, 5, 1, 'Matthew 5–7 • Jesus teaches')],
+    people: ['Jesus', 'The disciples', 'The crowds'],
+    lessons: ['Kingdom life begins in the heart', 'Practice Jesus’ words'],
+  ),
+  _BibleStory(
+    'Jesus Walks on Water',
+    'Take courage; do not be afraid',
+    'During a stormy night Jesus came to his disciples walking on the sea. Peter faltered in fear and was immediately rescued.',
+    Icons.directions_walk_rounded,
+    [_StoryPassage(40, 14, 22, 'Matthew 14:22–33 • Jesus walks on the sea')],
+    people: ['Jesus', 'Peter', 'The disciples'],
+    lessons: ['Look to Jesus in fear', 'Jesus is ready to rescue'],
+  ),
+  _BibleStory(
+    'The Transfiguration',
+    'The glory of Jesus revealed',
+    'Jesus shone with glory as Moses and Elijah appeared. The Father told the disciples to listen to his beloved Son.',
+    Icons.brightness_7_rounded,
+    [_StoryPassage(40, 17, 1, 'Matthew 17:1–13 • Jesus is transfigured')],
+    people: ['Jesus', 'Peter', 'James', 'John'],
+    lessons: ['Jesus fulfills Scripture', 'Listen to Jesus'],
+  ),
+  _BibleStory(
+    'Jesus Raises Lazarus',
+    'The resurrection and the life',
+    'Jesus wept with Martha and Mary, then called Lazarus out of the tomb, revealing compassion and authority over death.',
+    Icons.favorite_rounded,
+    [_StoryPassage(43, 11, 1, 'John 11 • Lazarus is raised')],
+    people: ['Jesus', 'Lazarus', 'Martha', 'Mary'],
+    lessons: [
+      'Jesus meets grief with compassion',
+      'Death does not have the final word',
+    ],
+  ),
+  _BibleStory(
+    'The Last Supper',
+    'Remembering Jesus’ covenant',
+    'Jesus washed his disciples’ feet and shared bread and the cup, teaching them to remember him and love one another.',
+    Icons.dinner_dining_rounded,
+    [
+      _StoryPassage(42, 22, 7, 'Luke 22:7–23 • Bread and the cup'),
+      _StoryPassage(43, 13, 1, 'John 13 • Jesus serves'),
+    ],
+    people: ['Jesus', 'The disciples'],
+    lessons: ['Jesus leads through service', 'Remember his love'],
+  ),
+  _BibleStory(
+    'The Crucifixion',
+    'Love displayed at the cross',
+    'Jesus was crucified at Golgotha, forgave his enemies, and entrusted himself to the Father.',
+    Icons.church_rounded,
+    [_StoryPassage(42, 23, 26, 'Luke 23:26–49 • Jesus is crucified')],
+    people: ['Jesus', 'Mary', 'The disciples'],
+    lessons: ['God’s love is costly', 'Jesus offers forgiveness'],
+  ),
+  _BibleStory(
+    'Paul’s Missionary Journeys',
+    'The good news crosses borders',
+    'Led by the Spirit, Paul and his companions carried the message of Jesus through cities and cultures.',
+    Icons.map_rounded,
+    [
+      _StoryPassage(44, 13, 1, 'Acts 13 • The journey begins'),
+      _StoryPassage(44, 16, 1, 'Acts 16 • Philippi'),
+      _StoryPassage(44, 19, 1, 'Acts 19 • Ephesus'),
+    ],
+    people: ['Paul', 'Barnabas', 'Silas', 'Timothy'],
+    lessons: ['The gospel is for every people', 'Faithfulness perseveres'],
+  ),
 ];
 
 class BibleStoriesScreen extends StatelessWidget {
@@ -1218,6 +1450,49 @@ class _BibleStoryScreen extends ConsumerWidget {
                 fontFamily: 'serif',
               ),
             ),
+            if (story.people.isNotEmpty) ...[
+              const SizedBox(height: 22),
+              Text(
+                'People involved',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final person in story.people) Chip(label: Text(person)),
+                ],
+              ),
+            ],
+            if (story.lessons.isNotEmpty) ...[
+              const SizedBox(height: 20),
+              Text(
+                'Key lessons',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              for (final lesson in story.lessons)
+                ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.lightbulb_outline_rounded),
+                  title: Text(lesson),
+                ),
+            ],
+            if (story.related.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                'Related stories',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              Text(story.related.join(' • ')),
+            ],
             const SizedBox(height: 28),
             Text(
               'Read the event in Scripture',
@@ -1627,46 +1902,44 @@ class _HomeAction extends StatelessWidget {
   final VoidCallback onTap;
   final bool featured;
   @override
-  Widget build(BuildContext context) => SizedBox(
-    width: width,
-    child: GlassCard(
-      padding: const EdgeInsets.all(15),
-      onTap: onTap,
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: featured
-                  ? AppTheme.gold.withValues(alpha: .22)
-                  : Theme.of(
-                      context,
-                    ).colorScheme.primary.withValues(alpha: .12),
-              borderRadius: BorderRadius.circular(15),
+  Widget build(BuildContext context) => Semantics(
+    button: true,
+    label: '$title. $subtitle',
+    child: SizedBox(
+      width: width,
+      child: GlassCard(
+        padding: const EdgeInsets.all(15),
+        onTap: onTap,
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: featured
+                    ? AppTheme.gold.withValues(alpha: .22)
+                    : Theme.of(
+                        context,
+                      ).colorScheme.primary.withValues(alpha: .12),
+                borderRadius: BorderRadius.circular(15),
+              ),
+              child: Icon(icon, color: featured ? AppTheme.gold : null),
             ),
-            child: Icon(icon, color: featured ? AppTheme.gold : null),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                Text(
-                  subtitle,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ],
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     ),
   );
@@ -2592,197 +2865,236 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
     final selectedText = selectedVerses
         .map((verse) => '${verse.number} ${verse.text}')
         .join('\n');
+    final savedToMemory = selectedVerses.length == 1
+        ? await repo.isMemoryVerse(first.id)
+        : false;
+    if (!context.mounted) return;
     await showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       showDragHandle: true,
       builder: (c) => SafeArea(
-        child: Wrap(
-          children: [
-            ListTile(
-              leading: const Icon(Icons.bookmark_add_outlined),
-              title: Text(
-                selectedVerses.length == 1
-                    ? 'Toggle bookmark'
-                    : 'Toggle bookmarks',
+        top: false,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(c).height * 0.82,
+          ),
+          child: ListView(
+            padding: EdgeInsets.zero,
+            shrinkWrap: true,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.bookmark_add_outlined),
+                title: Text(
+                  selectedVerses.length == 1
+                      ? 'Toggle bookmark'
+                      : 'Toggle bookmarks',
+                ),
+                onTap: () async {
+                  await repo.toggleBookmarks(verseIds);
+                  HapticFeedback.lightImpact();
+                  if (c.mounted) Navigator.pop(c);
+                },
               ),
-              onTap: () async {
-                await repo.toggleBookmarks(verseIds);
-                HapticFeedback.lightImpact();
-                if (c.mounted) Navigator.pop(c);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.short_text_rounded),
-              title: const Text('Quick context'),
-              enabled: selectedVerses.length == 1,
-              subtitle: const Text('See the surrounding passage here'),
-              onTap: selectedVerses.length != 1
-                  ? null
-                  : () {
-                      Navigator.pop(c);
-                      _quickContext(first);
-                    },
-            ),
-            ListTile(
-              leading: const Icon(Icons.auto_awesome_outlined),
-              title: const Text('Verse Lens'),
-              enabled: selectedVerses.length == 1,
-              subtitle: const Text('See this verse in context'),
-              onTap: selectedVerses.length != 1
-                  ? null
-                  : () {
-                      Navigator.pop(c);
-                      _openLens(first);
-                    },
-            ),
-            ListTile(
-              leading: const Icon(Icons.auto_awesome_outlined),
-              title: const Text('Focus'),
-              enabled: selectedVerses.length == 1,
-              subtitle: const Text('Read, reflect, respond, and pray'),
-              onTap: selectedVerses.length != 1
-                  ? null
-                  : () {
-                      Navigator.pop(c);
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => FocusVerseScreen(
-                            verse: first,
-                            onAskDavid: () => _askDavid(first),
-                          ),
-                        ),
-                      );
-                    },
-            ),
-            ListTile(
-              leading: const Icon(Icons.highlight),
-              title: const Text('Highlight'),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  for (final x in ['F6D365', '8ED1B2', '93B8F4', 'D4A5E8'])
-                    GestureDetector(
-                      onTap: () {
-                        repo.setHighlights(verseIds, x);
+              ListTile(
+                leading: const Icon(Icons.short_text_rounded),
+                title: const Text('Quick context'),
+                enabled: selectedVerses.length == 1,
+                subtitle: const Text('See the surrounding passage here'),
+                onTap: selectedVerses.length != 1
+                    ? null
+                    : () {
                         Navigator.pop(c);
-                        setState(() {});
+                        _quickContext(first);
                       },
-                      child: Container(
-                        width: 28,
-                        height: 28,
-                        margin: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: _color(x),
-                          shape: BoxShape.circle,
+              ),
+              ListTile(
+                leading: const Icon(Icons.auto_awesome_outlined),
+                title: const Text('Verse Lens'),
+                enabled: selectedVerses.length == 1,
+                subtitle: const Text('See this verse in context'),
+                onTap: selectedVerses.length != 1
+                    ? null
+                    : () {
+                        Navigator.pop(c);
+                        _openLens(first);
+                      },
+              ),
+              ListTile(
+                leading: const Icon(Icons.auto_awesome_outlined),
+                title: const Text('Focus'),
+                enabled: selectedVerses.length == 1,
+                subtitle: const Text('Read, reflect, respond, and pray'),
+                onTap: selectedVerses.length != 1
+                    ? null
+                    : () {
+                        Navigator.pop(c);
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => FocusVerseScreen(
+                              verse: first,
+                              onAskDavid: () => _askDavid(first),
+                            ),
+                          ),
+                        );
+                      },
+              ),
+              ListTile(
+                leading: const Icon(Icons.highlight),
+                title: const Text('Highlight'),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (final x in ['F6D365', '8ED1B2', '93B8F4', 'D4A5E8'])
+                      GestureDetector(
+                        onTap: () {
+                          repo.setHighlights(verseIds, x);
+                          Navigator.pop(c);
+                          setState(() {});
+                        },
+                        child: Container(
+                          width: 28,
+                          height: 28,
+                          margin: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: _color(x),
+                            shape: BoxShape.circle,
+                          ),
                         ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            ListTile(
-              leading: const Icon(Icons.psychology_alt_outlined),
-              title: const Text('Remember'),
-              enabled: selectedVerses.length == 1,
-              subtitle: const Text('Save this verse for private recall practice'),
-              onTap: selectedVerses.length != 1 ? null : () async {
-                final already = await repo.isMemoryVerse(first.id);
-                if (already) {
-                  if (c.mounted) Navigator.pop(c);
-                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Already in Memory. Open Memory Verses to practice it.')));
-                  return;
-                }
-                await repo.saveMemoryVerse(first.id);
-                HapticFeedback.lightImpact();
-                if (c.mounted) Navigator.pop(c);
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Verse saved to Memory.')));
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.psychology_alt_outlined),
-              title: const Text('Ask David'),
-              enabled: selectedVerses.length == 1,
-              onTap: selectedVerses.length != 1
-                  ? null
-                  : () {
-                      Navigator.pop(c);
-                      _askDavid(first);
-                    },
-            ),
-            ListTile(
-              leading: const Icon(Icons.format_color_reset),
-              title: const Text('Remove highlight'),
-              onTap: () async {
-                await repo.setHighlights(verseIds, null);
-                if (c.mounted) Navigator.pop(c);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.edit_note),
-              title: const Text('Add note'),
-              enabled: selectedVerses.length == 1,
-              subtitle: selectedVerses.length == 1
-                  ? null
-                  : const Text('Notes attach to one verse at a time'),
-              onTap: selectedVerses.length != 1
-                  ? null
-                  : () {
-                      Navigator.pop(c);
-                      _note(context, first);
-                    },
-            ),
-            ListTile(
-              leading: const Icon(Icons.hub_rounded),
-              title: const Text('Verse connections'),
-              enabled: selectedVerses.length == 1,
-              subtitle: selectedVerses.length == 1
-                  ? const Text('Explore curated related passages')
-                  : const Text('Choose one verse to explore connections'),
-              onTap: selectedVerses.length != 1
-                  ? null
-                  : () {
-                      Navigator.pop(c);
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => VerseConnectionsScreen(
-                            source: first,
-                            openPassage: _openConnectedPassage,
+              ListTile(
+                leading: const Icon(Icons.psychology_alt_outlined),
+                title: Text(savedToMemory ? 'Memory Verse ✓' : 'Remember'),
+                enabled: selectedVerses.length == 1,
+                subtitle: Text(
+                  savedToMemory
+                      ? 'Open your saved verse for recall practice'
+                      : 'Save this verse for private recall practice',
+                ),
+                onTap: selectedVerses.length != 1
+                    ? null
+                    : () async {
+                        if (savedToMemory) {
+                          if (c.mounted) Navigator.pop(c);
+                          if (mounted) {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => MemoryVersesScreen(
+                                  openVerse: (verse) => openReader(
+                                    context,
+                                    ref,
+                                    verse.bookId,
+                                    verse.chapter,
+                                    focusVerse: verse.number,
+                                  ),
+                                ),
+                              ),
+                            );
+                          }
+                          return;
+                        }
+                        await repo.saveMemoryVerse(first.id);
+                        HapticFeedback.lightImpact();
+                        if (c.mounted) {
+                          Navigator.pop(c);
+                        }
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(this.context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Verse saved to Memory.'),
                           ),
-                        ),
-                      );
-                    },
-            ),
-            ListTile(
-              leading: const Icon(Icons.copy),
-              title: const Text('Copy'),
-              onTap: () {
-                Clipboard.setData(
-                  ClipboardData(
-                    text:
-                        '$reference — $selectedText (${first.versionAbbreviation})',
-                  ),
-                );
-                Navigator.pop(c);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.share),
-              title: const Text('Share'),
-              onTap: () {
-                final box = context.findRenderObject() as RenderBox?;
-                SharePlus.instance.share(
-                  ShareParams(
-                    text:
-                        '$reference\n$selectedText\n${first.versionAbbreviation}',
-                    sharePositionOrigin: box == null
-                        ? null
-                        : box.localToGlobal(Offset.zero) & box.size,
-                  ),
-                );
-                Navigator.pop(c);
-              },
-            ),
-          ],
+                        );
+                      },
+              ),
+              ListTile(
+                leading: const Icon(Icons.psychology_alt_outlined),
+                title: const Text('Ask David'),
+                enabled: selectedVerses.length == 1,
+                onTap: selectedVerses.length != 1
+                    ? null
+                    : () {
+                        Navigator.pop(c);
+                        _askDavid(first);
+                      },
+              ),
+              ListTile(
+                leading: const Icon(Icons.format_color_reset),
+                title: const Text('Remove highlight'),
+                onTap: () async {
+                  await repo.setHighlights(verseIds, null);
+                  if (c.mounted) Navigator.pop(c);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.edit_note),
+                title: const Text('Add note'),
+                enabled: selectedVerses.length == 1,
+                subtitle: selectedVerses.length == 1
+                    ? null
+                    : const Text('Notes attach to one verse at a time'),
+                onTap: selectedVerses.length != 1
+                    ? null
+                    : () {
+                        Navigator.pop(c);
+                        _note(context, first);
+                      },
+              ),
+              ListTile(
+                leading: const Icon(Icons.hub_rounded),
+                title: const Text('Verse connections'),
+                enabled: selectedVerses.length == 1,
+                subtitle: selectedVerses.length == 1
+                    ? const Text('Explore curated related passages')
+                    : const Text('Choose one verse to explore connections'),
+                onTap: selectedVerses.length != 1
+                    ? null
+                    : () {
+                        Navigator.pop(c);
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => VerseConnectionsScreen(
+                              source: first,
+                              openPassage: _openConnectedPassage,
+                            ),
+                          ),
+                        );
+                      },
+              ),
+              ListTile(
+                leading: const Icon(Icons.copy),
+                title: const Text('Copy'),
+                onTap: () {
+                  Clipboard.setData(
+                    ClipboardData(
+                      text:
+                          '$reference — $selectedText (${first.versionAbbreviation})',
+                    ),
+                  );
+                  Navigator.pop(c);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.share),
+                title: const Text('Share'),
+                onTap: () {
+                  final box = context.findRenderObject() as RenderBox?;
+                  SharePlus.instance.share(
+                    ShareParams(
+                      text:
+                          '$reference\n$selectedText\n${first.versionAbbreviation}',
+                      sharePositionOrigin: box == null
+                          ? null
+                          : box.localToGlobal(Offset.zero) & box.size,
+                    ),
+                  );
+                  Navigator.pop(c);
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -3106,9 +3418,11 @@ class _DavidMessage {
     this.text, {
     required this.fromDavid,
     this.verses = const [],
+    this.online = false,
   });
   final String text;
   final bool fromDavid;
+  final bool online;
   final List<BibleVerse> verses;
 }
 
@@ -3124,6 +3438,7 @@ class _DavidScreenState extends ConsumerState<DavidScreen> {
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
   late final DavidAssistant _assistant;
+  late final OnlineDavidService _online;
   final _messages = <_DavidMessage>[
     const _DavidMessage(
       'Hello, I’m David. I can help you with the Bible without internet. Ask me to find a verse, explain a Bible story, or help when you feel worried or sad.',
@@ -3131,6 +3446,8 @@ class _DavidScreenState extends ConsumerState<DavidScreen> {
     ),
   ];
   bool _thinking = false;
+  bool _onlineAvailable = false;
+  String _language = 'English';
 
   static const _suggestions = [
     'Hi David!',
@@ -3148,12 +3465,19 @@ class _DavidScreenState extends ConsumerState<DavidScreen> {
       ref.read(bibleRepositoryProvider),
       journeyRepository: ref.read(journeyRepositoryProvider),
     );
+    _online = OnlineDavidService();
+    _refreshConnection();
     if (widget.initialQuestion != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _controller.text = widget.initialQuestion!;
         _ask();
       });
     }
+  }
+
+  Future<void> _refreshConnection() async {
+    final available = await _online.canUseOnline();
+    if (mounted) setState(() => _onlineAvailable = available);
   }
 
   @override
@@ -3172,14 +3496,46 @@ class _DavidScreenState extends ConsumerState<DavidScreen> {
       _thinking = true;
     });
     _scrollToEnd();
-    final reply = await _assistant.ask(
-      question,
-      ref.read(settingsProvider).defaultVersionId,
-    );
+    DavidReply reply;
+    var usedOnline = false;
+    if (_onlineAvailable) {
+      try {
+        reply = DavidReply(
+          await _online.ask(question: question, language: _language),
+        );
+        usedOnline = true;
+      } on DavidOnlineException catch (error) {
+        reply = await _assistant.ask(
+          question,
+          ref.read(settingsProvider).defaultVersionId,
+        );
+        _onlineAvailable = false;
+        if (mounted) {
+          final reason = error.kind == DavidOnlineFailure.rateLimited
+              ? 'Online limit reached'
+              : error.kind == DavidOnlineFailure.timeout
+              ? 'Online request timed out'
+              : 'Online David is unavailable';
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('$reason — using offline Scripture.')),
+          );
+        }
+      }
+    } else {
+      reply = await _assistant.ask(
+        question,
+        ref.read(settingsProvider).defaultVersionId,
+      );
+    }
     if (!mounted) return;
     setState(() {
       _messages.add(
-        _DavidMessage(reply.message, fromDavid: true, verses: reply.verses),
+        _DavidMessage(
+          reply.message,
+          fromDavid: true,
+          verses: reply.verses,
+          online: usedOnline,
+        ),
       );
       _thinking = false;
     });
@@ -3199,19 +3555,35 @@ class _DavidScreenState extends ConsumerState<DavidScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
-      title: const Row(
+      title: Row(
         children: [
-          _DavidAvatar(size: 40),
-          SizedBox(width: 10),
+          const _DavidAvatar(size: 40),
+          const SizedBox(width: 10),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('David'),
-              Text('Offline Bible guide', style: TextStyle(fontSize: 12)),
+              const Text('David'),
+              Text(
+                'David • ${_onlineAvailable ? 'Online' : 'Offline'}',
+                style: const TextStyle(fontSize: 12),
+              ),
             ],
           ),
         ],
       ),
+      actions: [
+        PopupMenuButton<String>(
+          tooltip: 'Response language',
+          initialValue: _language,
+          onSelected: (value) => setState(() => _language = value),
+          itemBuilder: (_) => const [
+            PopupMenuItem(value: 'English', child: Text('English')),
+            PopupMenuItem(value: 'Tagalog', child: Text('Tagalog')),
+            PopupMenuItem(value: 'Bisaya', child: Text('Bisaya')),
+          ],
+          icon: const Icon(Icons.translate_rounded),
+        ),
+      ],
     ),
     body: SafeArea(
       top: false,
@@ -3323,6 +3695,18 @@ class _DavidBubble extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(message.text),
+              if (message.fromDavid) ...[
+                const SizedBox(height: 8),
+                Text(
+                  message.online
+                      ? 'ONLINE • Gemini'
+                      : 'OFFLINE • Local Scripture',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: Theme.of(context).colorScheme.primary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
               for (final verse in message.verses) ...[
                 const SizedBox(height: 10),
                 InkWell(
@@ -4142,15 +4526,9 @@ class SettingsScreen extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const _Section('Appearance'),
-          SegmentedButton<ThemeMode>(
-            segments: const [
-              ButtonSegment(value: ThemeMode.system, label: Text('System')),
-              ButtonSegment(value: ThemeMode.light, label: Text('Light')),
-              ButtonSegment(value: ThemeMode.dark, label: Text('Dark')),
-            ],
-            selected: {s.themeMode},
-            onSelectionChanged: (v) =>
-                notifier.update(s.copyWith(themeMode: v.first)),
+          _ThemeSelector(
+            selected: s.theme,
+            onSelected: (theme) => notifier.update(s.copyWith(theme: theme)),
           ),
           const _Section('Reading'),
           ListTile(
@@ -4278,24 +4656,27 @@ class SettingsScreen extends ConsumerWidget {
             ),
           ),
           const _Section('Data'),
-            ListTile(
-              leading: const Icon(Icons.psychology_alt_outlined),
-              title: const Text('Memory Verses'),
-              subtitle: const Text('Practice Scripture privately, offline'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => MemoryVersesScreen(
-                    openVerse: (verse) => openReader(
-                      context, ref, verse.bookId, verse.chapter,
-                      focusVerse: verse.number,
-                    ),
+          ListTile(
+            leading: const Icon(Icons.psychology_alt_outlined),
+            title: const Text('Memory Verses'),
+            subtitle: const Text('Practice Scripture privately, offline'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => MemoryVersesScreen(
+                  openVerse: (verse) => openReader(
+                    context,
+                    ref,
+                    verse.bookId,
+                    verse.chapter,
+                    focusVerse: verse.number,
                   ),
                 ),
               ),
             ),
-            ListTile(
-              leading: const Icon(Icons.edit_note_outlined),
+          ),
+          ListTile(
+            leading: const Icon(Icons.edit_note_outlined),
             title: const Text('My Reflections'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => Navigator.of(context).push(
@@ -4347,7 +4728,7 @@ class SettingsScreen extends ConsumerWidget {
               color: AppTheme.gold,
             ),
             title: const Text('What’s New'),
-            subtitle: const Text('Veralume 1.4.9 · Verse Memory'),
+            subtitle: const Text('Veralume 1.5.1 • Radiant'),
             trailing: const Icon(Icons.chevron_right_rounded),
             onTap: () => Navigator.of(
               context,
@@ -4358,7 +4739,8 @@ class SettingsScreen extends ConsumerWidget {
             title: Text('Veralume'),
             subtitle: Text(
               'Truth · Light · Scripture\n'
-              'Version 1.4.9 · Verse Memory\n'
+              'Your Word. Your Light. Everywhere.\n'
+              'Version 1.5.1 • Radiant\n'
               'ArkByte Technologies',
             ),
           ),
@@ -4390,6 +4772,269 @@ class SettingsScreen extends ConsumerWidget {
       ),
     );
   }
+}
+
+class _ThemeSelector extends StatelessWidget {
+  const _ThemeSelector({required this.selected, required this.onSelected});
+  final VeralumeTheme selected;
+  final ValueChanged<VeralumeTheme> onSelected;
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) => GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: constraints.maxWidth > 560 ? 3 : 2,
+        childAspectRatio: 1.35,
+        crossAxisSpacing: 10,
+        mainAxisSpacing: 10,
+      ),
+      itemCount: VeralumeTheme.values.length,
+      itemBuilder: (context, index) {
+        final theme = VeralumeTheme.values[index],
+            palette = AppTheme.palettes[VeralumeTheme.values[index]]!;
+        final active = theme == selected;
+        return Semantics(
+          selected: active,
+          button: true,
+          label: '${theme.label} theme',
+          child: InkWell(
+            borderRadius: BorderRadius.circular(18),
+            onTap: () => onSelected(theme),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: palette.background,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: active ? palette.primary : palette.border,
+                  width: active ? 2.5 : 1,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      for (final color in [
+                        palette.primary,
+                        palette.secondary,
+                        palette.accent,
+                      ])
+                        Container(
+                          width: 22,
+                          height: 22,
+                          margin: const EdgeInsets.only(right: 5),
+                          decoration: BoxDecoration(
+                            color: color,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      const Spacer(),
+                      if (active)
+                        Icon(
+                          Icons.check_circle_rounded,
+                          color: palette.primary,
+                        ),
+                    ],
+                  ),
+                  const Spacer(),
+                  Text(
+                    theme.label,
+                    style: TextStyle(
+                      color: palette.text,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    ),
+  );
+}
+
+class RadiantFooter extends StatelessWidget {
+  const RadiantFooter({super.key});
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return Semantics(
+      container: true,
+      label:
+          'Veralume. Your Word. Your Light. Everywhere. Version 1.5.1 Radiant.',
+      child: Container(
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [p.footer, Color.lerp(p.footer, p.primary, .42)!],
+          ),
+          borderRadius: BorderRadius.circular(30),
+          border: Border.all(color: p.accent.withValues(alpha: .18)),
+          boxShadow: [
+            BoxShadow(
+              color: p.primary.withValues(alpha: .14),
+              blurRadius: 28,
+              offset: const Offset(0, 12),
+            ),
+          ],
+        ),
+        child: Stack(
+          children: [
+            Positioned(
+              right: -34,
+              top: -50,
+              child: ExcludeSemantics(
+                child: Container(
+                  width: 130,
+                  height: 130,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: p.accent.withValues(alpha: .08),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              left: 72,
+              bottom: -70,
+              child: ExcludeSemantics(
+                child: Container(
+                  width: 150,
+                  height: 110,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: p.primary.withValues(alpha: .18),
+                  ),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(22),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final stacked =
+                      constraints.maxWidth < 430 ||
+                      MediaQuery.textScalerOf(context).scale(16) > 21;
+                  final brand = _FooterBrand(accent: p.accent);
+                  final details = Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    alignment: stacked
+                        ? WrapAlignment.start
+                        : WrapAlignment.end,
+                    children: const [
+                      _FooterPill(
+                        icon: Icons.offline_bolt_rounded,
+                        label: 'Offline-first',
+                      ),
+                      _FooterPill(label: '1.5.1 • Radiant'),
+                    ],
+                  );
+                  if (stacked) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [brand, const SizedBox(height: 18), details],
+                    );
+                  }
+                  return Row(
+                    children: [
+                      Expanded(child: brand),
+                      const SizedBox(width: 20),
+                      Flexible(child: details),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FooterBrand extends StatelessWidget {
+  const _FooterBrand({required this.accent});
+  final Color accent;
+  @override
+  Widget build(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Container(
+        width: 52,
+        height: 52,
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: .1),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: Colors.white.withValues(alpha: .12)),
+        ),
+        child: Icon(Icons.auto_stories_rounded, color: accent, size: 28),
+      ),
+      const SizedBox(width: 14),
+      Flexible(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'VERALUME',
+              style: TextStyle(
+                color: accent,
+                fontSize: 17,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 2.8,
+              ),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              'Your Word. Your Light. Everywhere.',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: .88),
+                height: 1.3,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ],
+  );
+}
+
+class _FooterPill extends StatelessWidget {
+  const _FooterPill({required this.label, this.icon});
+  final String label;
+  final IconData? icon;
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+    decoration: BoxDecoration(
+      color: Colors.white.withValues(alpha: .09),
+      borderRadius: BorderRadius.circular(99),
+      border: Border.all(color: Colors.white.withValues(alpha: .1)),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (icon != null) ...[
+          Icon(icon, color: Colors.white.withValues(alpha: .75), size: 15),
+          const SizedBox(width: 5),
+        ],
+        Text(
+          label,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: .78),
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 class _Section extends StatelessWidget {

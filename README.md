@@ -1,4 +1,20 @@
-# Veralume
+# Veralume 1.5.1 — Radiant
+
+Your Word. Your Light. Everywhere.
+
+## Online David configuration
+
+David remains useful offline through the bundled Scripture database. Online answers use the
+`supabase/functions/david` Edge Function, which reads `GEMINI_API_KEY` (and optional
+`GEMINI_MODEL`) from Supabase secrets. Never add that key to Flutter configuration.
+
+Deploy the function, then build the app with the public endpoint and anon key:
+
+```sh
+flutter build apk --release \
+  --dart-define=DAVID_FUNCTION_URL=https://PROJECT.supabase.co/functions/v1/david \
+  --dart-define=SUPABASE_ANON_KEY=YOUR_PUBLIC_ANON_KEY
+```
 
 Developed by ArkByte Technologies: Earl Gultia, Kristelle Joyce Quijano,
 Miles Gultia, and Arvey Ociones.

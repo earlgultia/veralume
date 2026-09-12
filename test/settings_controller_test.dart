@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:veralume/core/theme/app_theme.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:veralume/presentation/providers/app_providers.dart';
@@ -22,7 +23,7 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 10));
     }
     expect(controller.state.loaded, isTrue);
-    expect(controller.state.themeMode, ThemeMode.dark);
+    expect(controller.state.theme, VeralumeTheme.midnight);
     expect(controller.state.fontSize, 23);
     expect(controller.state.lineHeight, 1.8);
     expect(controller.state.serif, isFalse);
@@ -32,14 +33,14 @@ void main() {
 
     await controller.update(
       controller.state.copyWith(
-        themeMode: ThemeMode.light,
+        theme: VeralumeTheme.teal,
         fontSize: 18,
         fullScreen: false,
         defaultVersionId: 3,
       ),
     );
     final preferences = await SharedPreferences.getInstance();
-    expect(preferences.getInt('theme'), ThemeMode.light.index);
+    expect(preferences.getInt('radiantTheme'), VeralumeTheme.teal.index);
     expect(preferences.getDouble('fontSize'), 18);
     expect(preferences.getBool('fullScreen'), isFalse);
     expect(preferences.getInt('defaultVersionId'), 3);
