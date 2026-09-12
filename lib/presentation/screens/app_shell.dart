@@ -533,31 +533,133 @@ class _AppShellState extends ConsumerState<AppShell> {
       ),
       bottomNavigationBar: SafeArea(
         top: false,
-        child: NavigationBar(
+        child: _RadiantNavigationBar(
           selectedIndex: primaryTabs.contains(index)
               ? primaryTabs.indexOf(index)
               : 0,
-          onDestinationSelected: (i) => setState(() => index = primaryTabs[i]),
-          labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-          destinations: const [
-            NavigationDestination(
-              icon: Icon(Icons.home_outlined),
-              selectedIcon: Icon(Icons.home),
-              label: 'Home',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.auto_stories_outlined),
-              selectedIcon: Icon(Icons.auto_stories),
-              label: 'Bible',
-            ),
-            NavigationDestination(icon: Icon(Icons.search), label: 'Search'),
-            NavigationDestination(
-              icon: Icon(Icons.bookmark_outline),
-              selectedIcon: Icon(Icons.bookmark),
-              label: 'Saved',
-            ),
-            NavigationDestination(icon: Icon(Icons.tune), label: 'Settings'),
-          ],
+          onSelected: (i) => setState(() => index = primaryTabs[i]),
+        ),
+      ),
+    );
+  }
+}
+
+class _RadiantNavigationBar extends StatelessWidget {
+  const _RadiantNavigationBar({
+    required this.selectedIndex,
+    required this.onSelected,
+  });
+  final int selectedIndex;
+  final ValueChanged<int> onSelected;
+  static const _items = [
+    (Icons.home_outlined, Icons.home_rounded, 'Home'),
+    (Icons.auto_stories_outlined, Icons.auto_stories_rounded, 'Bible'),
+    (Icons.search_rounded, Icons.manage_search_rounded, 'Search'),
+    (Icons.bookmark_outline_rounded, Icons.bookmark_rounded, 'Saved'),
+    (Icons.tune_rounded, Icons.tune_rounded, 'Settings'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 10),
+      child: Material(
+        color: palette.navigation.withValues(alpha: .98),
+        elevation: 8,
+        shadowColor: palette.primary.withValues(alpha: .18),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(26),
+          side: BorderSide(color: palette.border.withValues(alpha: .7)),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: SizedBox(
+          height: 72,
+          child: Row(
+            children: [
+              for (var index = 0; index < _items.length; index++)
+                Expanded(
+                  child: _RadiantNavigationItem(
+                    icon: _items[index].$1,
+                    selectedIcon: _items[index].$2,
+                    label: _items[index].$3,
+                    selected: selectedIndex == index,
+                    onTap: () => onSelected(index),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RadiantNavigationItem extends StatelessWidget {
+  const _RadiantNavigationItem({
+    required this.icon,
+    required this.selectedIcon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+  final IconData icon, selectedIcon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: label,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 7),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                width: selected ? 42 : 34,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: selected
+                      ? scheme.primary.withValues(alpha: .14)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(13),
+                ),
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 160),
+                  child: Icon(
+                    selected ? selectedIcon : icon,
+                    key: ValueKey(selected),
+                    size: selected ? 24 : 22,
+                    color: selected ? scheme.primary : scheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 3),
+              AnimatedDefaultTextStyle(
+                duration: const Duration(milliseconds: 180),
+                style: TextStyle(
+                  color: selected ? scheme.primary : scheme.onSurfaceVariant,
+                  fontSize: 11,
+                  fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                ),
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.fade,
+                  softWrap: false,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
