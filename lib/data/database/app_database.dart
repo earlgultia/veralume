@@ -102,9 +102,23 @@ class AppDatabase {
     await db.execute(
       'CREATE TABLE IF NOT EXISTS bookmarks(id INTEGER PRIMARY KEY AUTOINCREMENT, verse_id INTEGER NOT NULL UNIQUE REFERENCES verses(id), created_at TEXT NOT NULL)',
     );
+    final bookmarkColumns = await db.rawQuery('PRAGMA table_info(bookmarks)');
+    if (!bookmarkColumns.any((column) => column['name'] == 'sermon_title')) {
+      await db.execute('ALTER TABLE bookmarks ADD COLUMN sermon_title TEXT');
+    }
+    if (!bookmarkColumns.any((column) => column['name'] == 'sermon_note')) {
+      await db.execute('ALTER TABLE bookmarks ADD COLUMN sermon_note TEXT');
+    }
     await db.execute(
       'CREATE TABLE IF NOT EXISTS highlights(id INTEGER PRIMARY KEY AUTOINCREMENT, verse_id INTEGER NOT NULL UNIQUE REFERENCES verses(id), color TEXT NOT NULL, created_at TEXT NOT NULL)',
     );
+    final highlightColumns = await db.rawQuery('PRAGMA table_info(highlights)');
+    if (!highlightColumns.any((column) => column['name'] == 'sermon_title')) {
+      await db.execute('ALTER TABLE highlights ADD COLUMN sermon_title TEXT');
+    }
+    if (!highlightColumns.any((column) => column['name'] == 'sermon_note')) {
+      await db.execute('ALTER TABLE highlights ADD COLUMN sermon_note TEXT');
+    }
     await db.execute(
       'CREATE TABLE IF NOT EXISTS notes(id INTEGER PRIMARY KEY AUTOINCREMENT, verse_id INTEGER NOT NULL REFERENCES verses(id), content TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)',
     );
@@ -148,6 +162,12 @@ class AppDatabase {
     );
     await db.execute(
       'CREATE TABLE IF NOT EXISTS prayers(id INTEGER PRIMARY KEY AUTOINCREMENT, verse_id INTEGER NOT NULL REFERENCES verses(id), content TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)',
+    );
+    await db.execute(
+      'CREATE TABLE IF NOT EXISTS prayer_journal(id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL, answered INTEGER NOT NULL DEFAULT 0, answered_at TEXT)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS prayer_journal_recent ON prayer_journal(created_at DESC)',
     );
     await db.execute(
       'CREATE TABLE IF NOT EXISTS focus_sessions(id INTEGER PRIMARY KEY AUTOINCREMENT, verse_id INTEGER NOT NULL REFERENCES verses(id), read_completed INTEGER NOT NULL DEFAULT 0, reflection_completed INTEGER NOT NULL DEFAULT 0, respond_completed INTEGER NOT NULL DEFAULT 0, prayer_completed INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, completed_at TEXT)',

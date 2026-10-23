@@ -12,18 +12,18 @@ import 'focus_screen.dart';
 import 'journey_screens.dart';
 
 typedef OpenLensPassage = Future<void> Function(PassageReference passage);
-typedef AskDavidForVerse = void Function(BibleVerse verse);
+typedef AskSamSamForVerse = void Function(BibleVerse verse);
 
 class VerseLensScreen extends ConsumerStatefulWidget {
   const VerseLensScreen({
     super.key,
     required this.verse,
     required this.openPassage,
-    required this.askDavid,
+    required this.askSamSam,
   });
   final BibleVerse verse;
   final OpenLensPassage openPassage;
-  final AskDavidForVerse askDavid;
+  final AskSamSamForVerse askSamSam;
 
   @override
   ConsumerState<VerseLensScreen> createState() => _VerseLensScreenState();
@@ -39,7 +39,7 @@ class _VerseLensScreenState extends ConsumerState<VerseLensScreen> {
       MaterialPageRoute(
         builder: (_) => FocusVerseScreen(
           verse: _selected,
-          onAskDavid: () => widget.askDavid(_selected),
+          onAskSamSam: () => widget.askSamSam(_selected),
         ),
       ),
     );
@@ -238,7 +238,7 @@ class _VerseLensScreenState extends ConsumerState<VerseLensScreen> {
                       ),
               ),
               const SizedBox(height: 18),
-              const _LensHeading('ASK DAVID'),
+              const _LensHeading('ASK SAM-SAM'),
               const SizedBox(height: 8),
               GlassCard(
                 child: Column(
@@ -247,9 +247,9 @@ class _VerseLensScreenState extends ConsumerState<VerseLensScreen> {
                     const Text('Have a conversation about this verse.'),
                     const SizedBox(height: 12),
                     FilledButton.tonalIcon(
-                      onPressed: () => widget.askDavid(_selected),
+                      onPressed: () => widget.askSamSam(_selected),
                       icon: const Icon(Icons.psychology_alt_outlined),
-                      label: const Text('Ask David'),
+                      label: const Text('Ask Sam-Sam'),
                     ),
                   ],
                 ),
@@ -330,10 +330,10 @@ class GiveMeAVerseScreen extends ConsumerStatefulWidget {
   const GiveMeAVerseScreen({
     super.key,
     required this.openVerse,
-    required this.askDavid,
+    required this.askSamSam,
   });
   final Future<void> Function(BibleVerse verse) openVerse;
-  final AskDavidForVerse askDavid;
+  final AskSamSamForVerse askSamSam;
   @override
   ConsumerState<GiveMeAVerseScreen> createState() => _GiveMeAVerseScreenState();
 }
@@ -435,7 +435,7 @@ class _GiveMeAVerseScreenState extends ConsumerState<GiveMeAVerseScreen> {
                               MaterialPageRoute(
                                 builder: (_) => FocusVerseScreen(
                                   verse: verse,
-                                  onAskDavid: () => widget.askDavid(verse),
+                                  onAskSamSam: () => widget.askSamSam(verse),
                                 ),
                               ),
                             ),
@@ -459,9 +459,9 @@ class _GiveMeAVerseScreenState extends ConsumerState<GiveMeAVerseScreen> {
                             label: const Text('Save'),
                           ),
                           OutlinedButton.icon(
-                            onPressed: () => widget.askDavid(verse),
+                            onPressed: () => widget.askSamSam(verse),
                             icon: const Icon(Icons.psychology_alt_outlined),
-                            label: const Text('Ask David'),
+                            label: const Text('Ask Sam-Sam'),
                           ),
                         ],
                       ),

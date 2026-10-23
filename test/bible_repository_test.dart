@@ -4,8 +4,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:veralume/data/repositories/bible_repository.dart';
 import 'package:veralume/data/database/app_database.dart';
-import 'package:veralume/domain/assistant/david_assistant.dart';
+import 'package:veralume/domain/assistant/sam_sam_assistant.dart';
 import 'package:veralume/domain/memory/verse_memory.dart';
+import 'package:veralume/domain/assistant/sam_sam_companion.dart';
 
 void main() {
   sqfliteFfiInit();
@@ -73,24 +74,47 @@ void main() {
     expect(book.every((verse) => verse.bookId == 1), isTrue);
   });
 
-  test('David resolves references and answers about biblical events', () async {
-    final assistant = DavidAssistant(repository);
-    final reference = await assistant.ask('Please show me John 3:16', 1);
-    expect(reference.verses, hasLength(1));
-    expect(reference.verses.single.reference, 'John 3:16');
-
-    final event = await assistant.ask('Tell me about David and Goliath', 1);
-    expect(event.message, contains('Goliath'));
-    expect(event.verses, isNotEmpty);
-    expect(event.verses.every((verse) => verse.versionId == 1), isTrue);
-  });
+  test(
+    'Sam-Sam Bible fact references resolve from the bundled database',
+    () async {
+      for (final fact in SamSamFacts.facts) {
+        final match = RegExp(
+          r'^(.+?)\s+(\d+)(?::(\d+)(?:-(\d+))?)?$',
+        ).firstMatch(fact.reference);
+        expect(match, isNotNull, reason: fact.reference);
+        final verses = await repository.passageByReference(
+          match!.group(1)!,
+          int.parse(match.group(2)!),
+          startVerse: int.tryParse(match.group(3) ?? ''),
+          endVerse: int.tryParse(match.group(4) ?? ''),
+          versionId: 1,
+        );
+        expect(verses, isNotEmpty, reason: fact.reference);
+      }
+    },
+  );
 
   test(
-    'David handles conversation and grounded life questions offline',
+    'Sam-Sam resolves references and answers about biblical events',
     () async {
-      final assistant = DavidAssistant(repository);
+      final assistant = SamSamAssistant(repository);
+      final reference = await assistant.ask('Please show me John 3:16', 1);
+      expect(reference.verses, hasLength(1));
+      expect(reference.verses.single.reference, 'John 3:16');
 
-      final greeting = await assistant.ask('Hi David!', 1);
+      final event = await assistant.ask('Tell me about David and Goliath', 1);
+      expect(event.message, contains('Goliath'));
+      expect(event.verses, isNotEmpty);
+      expect(event.verses.every((verse) => verse.versionId == 1), isTrue);
+    },
+  );
+
+  test(
+    'Sam-Sam handles conversation and grounded life questions offline',
+    () async {
+      final assistant = SamSamAssistant(repository);
+
+      final greeting = await assistant.ask('Hi Sam-Sam!', 1);
       expect(greeting.message, contains('Hello'));
       expect(greeting.verses, isEmpty);
 
@@ -120,6 +144,63 @@ void main() {
     },
   );
 
+  test(
+    'offline assistant declines questions outside its local Bible guide',
+    () async {
+      final assistant = SamSamAssistant(repository);
+
+      final reply = await assistant.ask('What is pi?', 1);
+
+      expect(reply.verses, isEmpty);
+      expect(
+        reply.message,
+        contains('can’t answer that from my offline Bible guide'),
+      );
+    },
+  );
+
+  test(
+    'Sam-Sam understands typos, Tagalog, Bisaya, and short follow-ups offline',
+    () async {
+      final assistant = SamSamAssistant(repository);
+
+      final typo = await assistant.ask('Tell me abot Goliat', 1);
+      expect(typo.verses, isNotEmpty);
+      expect(typo.verses.first.reference, '1 Samuel 17:45');
+
+      final tagalog = await assistant.ask('Kinakabahan ako', 1);
+      expect(tagalog.message, contains('Ikinalulungkot'));
+      expect(tagalog.verses, isNotEmpty);
+
+      final bisaya = await assistant.ask('Nabalaka ko', 1);
+      expect(bisaya.message, contains('Pasayloa'));
+      expect(bisaya.verses, isNotEmpty);
+
+      final followUp = await assistant.ask(
+        'ngano?',
+        1,
+        conversation: ['Nabalaka ko'],
+      );
+      expect(followUp.message, contains('Mahitungod sa imong pangutana'));
+      expect(followUp.verses, isNotEmpty);
+
+      final contextualFollowUp = await assistant.ask(
+        'What does that mean?',
+        1,
+        conversation: ['I feel anxious'],
+      );
+      expect(
+        contextualFollowUp.message,
+        contains('About your earlier question'),
+      );
+      expect(contextualFollowUp.verses, isNotEmpty);
+
+      final localizedReference = await assistant.ask('Juan 3:16', 1);
+      expect(localizedReference.verses, hasLength(1));
+      expect(localizedReference.verses.single.reference, 'John 3:16');
+    },
+  );
+
   test('combined topic search resolves terms in one query', () async {
     final results = await repository.searchAnyTerms(
       ['kindness', 'mercy', 'compassion'],
@@ -136,10 +217,26 @@ void main() {
       final verses = await repository.chapter(1, 1);
       await repository.toggleBookmarks(verses.take(3).map((verse) => verse.id));
       expect(await repository.bookmarks(), hasLength(3));
+      final firstSaved = (await repository.bookmarks()).first;
+      await repository.updateSermonDetails(
+        verseId: firstSaved.verse.id,
+        isHighlight: false,
+        title: 'Hope',
+        note: 'Use this in Sunday’s message.',
+      );
+      final updated = (await repository.bookmarks()).first;
+      expect(updated.sermonTitle, 'Hope');
+      expect(updated.sermonNote, 'Use this in Sunday’s message.');
       await database.close();
       await openRepository();
       expect(await repository.bookmarks(), hasLength(3));
       expect(await repository.bookmarks(query: 'light'), isNotEmpty);
+      expect(
+        (await repository.bookmarks(query: 'Sunday')).single.sermonTitle,
+        'Hope',
+      );
+      await repository.removeBookmark(firstSaved.verse.id);
+      expect(await repository.bookmarks(), hasLength(2));
     },
   );
 
@@ -150,6 +247,26 @@ void main() {
     expect(await repository.highlights(), hasLength(2));
     await repository.setHighlights(ids, '93B8F4');
     expect((await repository.highlights()).first.color, '93B8F4');
+    final savedHighlight = (await repository.highlights()).first;
+    await repository.updateSermonDetails(
+      verseId: savedHighlight.verse.id,
+      isHighlight: true,
+      title: 'Creation',
+      note: 'Connect this with the opening theme.',
+    );
+    final managedHighlight = (await repository.highlights()).first;
+    expect(managedHighlight.sermonTitle, 'Creation');
+    expect(managedHighlight.sermonNote, 'Connect this with the opening theme.');
+    expect(
+      (await repository.highlights(query: 'opening theme')).single.sermonTitle,
+      'Creation',
+    );
+    await repository.setHighlights(ids, '93B8F4');
+    final recolored = (await repository.highlights()).singleWhere(
+      (saved) => saved.verse.id == savedHighlight.verse.id,
+    );
+    expect(recolored.sermonTitle, 'Creation');
+    expect(recolored.sermonNote, 'Connect this with the opening theme.');
     await repository.setHighlights(ids, null);
     expect(await repository.highlights(), isEmpty);
   });
@@ -192,31 +309,36 @@ void main() {
     );
   });
 
-  test('memory verses stay local, deduplicate, and record recall outcomes',
-      () async {
-    final verse = (await repository.chapter(1, 1)).first;
-    await repository.saveMemoryVerse(verse.id);
-    await repository.saveMemoryVerse(verse.id);
-    expect(await repository.isMemoryVerse(verse.id), isTrue);
-    expect(await repository.memoryVerses(), hasLength(1));
-    await repository.recordMemoryPractice(verse.id, successful: true);
-    await repository.recordMemoryPractice(verse.id, successful: false);
-    final saved = (await repository.memoryVerses()).single;
-    expect(saved.practiceCount, 2);
-    expect(saved.successfulRecalls, 1);
-    expect(saved.failedRecalls, 1);
-    expect(saved.status.label, 'Practicing');
-    await repository.removeMemoryVerse(verse.id);
-    expect(await repository.memoryVerses(), isEmpty);
-  });
+  test(
+    'memory verses stay local, deduplicate, and record recall outcomes',
+    () async {
+      final verse = (await repository.chapter(1, 1)).first;
+      await repository.saveMemoryVerse(verse.id);
+      await repository.saveMemoryVerse(verse.id);
+      expect(await repository.isMemoryVerse(verse.id), isTrue);
+      expect(await repository.memoryVerses(), hasLength(1));
+      await repository.recordMemoryPractice(verse.id, successful: true);
+      await repository.recordMemoryPractice(verse.id, successful: false);
+      final saved = (await repository.memoryVerses()).single;
+      expect(saved.practiceCount, 2);
+      expect(saved.successfulRecalls, 1);
+      expect(saved.failedRecalls, 1);
+      expect(saved.status.label, 'Practicing');
+      await repository.removeMemoryVerse(verse.id);
+      expect(await repository.memoryVerses(), isEmpty);
+    },
+  );
 
-  test('cloze normalization is forgiving and preserves multilingual tokens', () {
-    final exercise = ClozeExercise("Ang Diyos's pag-ibig ay dakila!");
-    expect(exercise.tokens, containsAll(["Diyos's", 'pag-ibig', 'dakila']));
-    expect(exercise.correct('PAG-IBIG ', 'pag-ibig'), isTrue);
-    expect(exercise.correct('mali', 'pag-ibig'), isFalse);
-    expect(exercise.blanks(), isNotEmpty);
-  });
+  test(
+    'cloze normalization is forgiving and preserves multilingual tokens',
+    () {
+      final exercise = ClozeExercise("Ang Diyos's pag-ibig ay dakila!");
+      expect(exercise.tokens, containsAll(["Diyos's", 'pag-ibig', 'dakila']));
+      expect(exercise.correct('PAG-IBIG ', 'pag-ibig'), isTrue);
+      expect(exercise.correct('mali', 'pag-ibig'), isFalse);
+      expect(exercise.blanks(), isNotEmpty);
+    },
+  );
 
   test('Verse Lens context remains valid at chapter boundaries', () async {
     final verses = await repository.chapter(1, 1);

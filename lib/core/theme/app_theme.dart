@@ -295,6 +295,15 @@ class AppTheme {
       scaffoldBackgroundColor: p.background,
       extensions: [p],
       textTheme: base.textTheme.apply(bodyColor: p.text, displayColor: p.text),
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: {
+          TargetPlatform.android: _SoftPageTransitionsBuilder(),
+          TargetPlatform.iOS: _SoftPageTransitionsBuilder(),
+          TargetPlatform.linux: _SoftPageTransitionsBuilder(),
+          TargetPlatform.macOS: _SoftPageTransitionsBuilder(),
+          TargetPlatform.windows: _SoftPageTransitionsBuilder(),
+        },
+      ),
       appBarTheme: AppBarTheme(
         backgroundColor: Colors.transparent,
         foregroundColor: p.text,
@@ -342,6 +351,34 @@ class AppTheme {
 
   static ThemeData light() => forTheme(VeralumeTheme.royalPurple);
   static ThemeData dark() => forTheme(VeralumeTheme.midnight);
+}
+
+class _SoftPageTransitionsBuilder extends PageTransitionsBuilder {
+  const _SoftPageTransitionsBuilder();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    final eased = CurvedAnimation(
+      parent: animation,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    );
+    return FadeTransition(
+      opacity: eased,
+      child: SlideTransition(
+        position: eased.drive(
+          Tween<Offset>(begin: const Offset(.025, 0), end: Offset.zero),
+        ),
+        child: child,
+      ),
+    );
+  }
 }
 
 extension VeralumeThemeContext on BuildContext {

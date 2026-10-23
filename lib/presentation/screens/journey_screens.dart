@@ -941,7 +941,7 @@ class _JourneyDayCard extends StatelessWidget {
               const SizedBox(width: 9),
               Expanded(
                 child: Text(
-                  'David\n“${day.reflection}”',
+                  'Sam-Sam\n“${day.reflection}”',
                   style: const TextStyle(height: 1.4),
                 ),
               ),
@@ -1103,7 +1103,7 @@ class DailyLightScreen extends ConsumerWidget {
       settingsProvider.select((value) => value.defaultVersionId),
     );
     return Scaffold(
-      appBar: AppBar(title: const Text('Your Light for Today')),
+      appBar: AppBar(title: const Text('Daily Devotional')),
       body: FutureBuilder<List<BibleVerse>>(
         future: journey.resolvePassage(light.passage, versionId),
         builder: (context, snapshot) {
@@ -1153,7 +1153,7 @@ class DailyLightScreen extends ConsumerWidget {
                             ),
                             SizedBox(width: 9),
                             Text(
-                              'SCRIPTURE',
+                              'VERSE OF THE DAY',
                               style: TextStyle(
                                 color: AppTheme.gold,
                                 fontWeight: FontWeight.w800,
@@ -1173,33 +1173,38 @@ class DailyLightScreen extends ConsumerWidget {
                           '$reference · ${first.versionAbbreviation}',
                           style: const TextStyle(fontWeight: FontWeight.w700),
                         ),
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 22),
-                          child: Divider(),
-                        ),
-                        const Text(
-                          'REFLECTION',
-                          style: TextStyle(
-                            color: AppTheme.gold,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 1.3,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Text(
-                          light.reflection,
-                          style: Theme.of(
-                            context,
-                          ).textTheme.titleMedium?.copyWith(height: 1.5),
-                        ),
-                        const SizedBox(height: 20),
-                        FilledButton.icon(
-                          onPressed: () => openPassage(light.passage),
-                          icon: const Icon(Icons.auto_stories_rounded),
-                          label: const Text('Read Passage'),
-                        ),
                       ],
                     ),
+                  ),
+                  const SizedBox(height: 14),
+                  GlassCard(
+                    child: _DevotionalSection(
+                      icon: Icons.lightbulb_outline_rounded,
+                      title: 'REFLECTION',
+                      content: light.reflection,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  GlassCard(
+                    child: _DevotionalSection(
+                      icon: Icons.directions_walk_rounded,
+                      title: 'PRACTICAL LESSON',
+                      content: light.practicalLesson,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  GlassCard(
+                    child: _DevotionalSection(
+                      icon: Icons.volunteer_activism_outlined,
+                      title: 'PRAYER OF THE DAY',
+                      content: light.prayer,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    onPressed: () => openPassage(light.passage),
+                    icon: const Icon(Icons.auto_stories_rounded),
+                    label: const Text('Read Passage'),
                   ),
                   const SizedBox(height: 14),
                   const Text(
@@ -1215,6 +1220,45 @@ class DailyLightScreen extends ConsumerWidget {
       ),
     );
   }
+}
+
+class _DevotionalSection extends StatelessWidget {
+  const _DevotionalSection({
+    required this.icon,
+    required this.title,
+    required this.content,
+  });
+
+  final IconData icon;
+  final String title, content;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Row(
+        children: [
+          Icon(icon, color: AppTheme.gold, size: 19),
+          const SizedBox(width: 9),
+          Text(
+            title,
+            style: const TextStyle(
+              color: AppTheme.gold,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.2,
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 10),
+      Text(
+        content,
+        style: Theme.of(
+          context,
+        ).textTheme.titleMedium?.copyWith(height: 1.55, fontFamily: 'serif'),
+      ),
+    ],
+  );
 }
 
 class VerseConnectionsScreen extends ConsumerWidget {

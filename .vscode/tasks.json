@@ -1,0 +1,78 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Build release APK",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"build",
+				"apk",
+				"--release"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Build configured release APK",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"build",
+				"apk",
+				"--release",
+				"--dart-define=SUPABASE_URL=https://fteeurgkgeywlytmabwt.supabase.co",
+				"--dart-define=SUPABASE_PUBLISHABLE_KEY=sb_publishable_osn77U7AB8qzngoM8RIBkg_pzTFkq4M"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Check rebuilt APK timestamp",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"dir /T:W build\\app\\outputs\\flutter-apk\\app-release.apk"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Check icon image tooling",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"python -c \"import PIL; print(PIL.__version__)\""
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Format and test Sam-Sam fixes",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"dart format lib\\data\\services\\online_sam_sam_service.dart lib\\presentation\\screens\\app_shell.dart test\\online_sam_sam_service_test.dart && flutter test --no-pub test\\online_sam_sam_service_test.dart"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Build fixed Veralume APK",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"build",
+				"apk",
+				"--release",
+				"--dart-define=SUPABASE_URL=https://fteeurgkgeywlytmabwt.supabase.co",
+				"--dart-define=SUPABASE_PUBLISHABLE_KEY=sb_publishable_osn77U7AB8qzngoM8RIBkg_pzTFkq4M"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		}
+	]
+}

@@ -9,9 +9,9 @@ import '../widgets/glass_card.dart';
 enum _FocusStage { read, reflect, respond, pray, complete }
 
 class FocusVerseScreen extends ConsumerStatefulWidget {
-  const FocusVerseScreen({super.key, required this.verse, this.onAskDavid});
+  const FocusVerseScreen({super.key, required this.verse, this.onAskSamSam});
   final BibleVerse verse;
-  final VoidCallback? onAskDavid;
+  final VoidCallback? onAskSamSam;
 
   @override
   ConsumerState<FocusVerseScreen> createState() => _FocusVerseScreenState();
@@ -156,13 +156,13 @@ class _FocusVerseScreenState extends ConsumerState<FocusVerseScreen> {
       if (action == 'note') {
         await _openNote();
       }
-      if (action == 'david') {
-        widget.onAskDavid?.call();
+      if (action == 'samSam') {
+        widget.onAskSamSam?.call();
       }
       if (mounted) {
         setState(() => _responded = true);
       }
-      if (action != 'david') {
+      if (action != 'samSam') {
         _message('${action[0].toUpperCase()}${action.substring(1)} saved.');
       }
     } catch (_) {
@@ -380,7 +380,7 @@ class _FocusVerseScreenState extends ConsumerState<FocusVerseScreen> {
             _action('bookmark', Icons.bookmark_add_outlined, 'Bookmark'),
             _action('highlight', Icons.highlight_outlined, 'Highlight'),
             _action('note', Icons.edit_note_outlined, 'Add Note'),
-            _action('david', Icons.psychology_alt_outlined, 'Ask David'),
+            _action('samSam', Icons.psychology_alt_outlined, 'Ask Sam-Sam'),
           ],
         ),
         const SizedBox(height: 12),

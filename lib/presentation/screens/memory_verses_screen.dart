@@ -7,7 +7,7 @@ import '../../domain/memory/verse_memory.dart';
 import '../providers/app_providers.dart';
 import '../widgets/glass_card.dart';
 import 'focus_screen.dart';
-import 'app_shell.dart' show DavidScreen;
+import 'app_shell.dart' show SamSamScreen;
 import 'verse_lens_screen.dart';
 
 typedef OpenMemoryVerse = Future<void> Function(BibleVerse verse);
@@ -329,7 +329,7 @@ class _MemoryVerseDetailState extends ConsumerState<MemoryVerseDetail> {
           MaterialPageRoute(
             builder: (_) => FocusVerseScreen(
               verse: widget.memory.verse,
-              onAskDavid: () => _david(),
+              onAskSamSam: () => _david(),
             ),
           ),
         ),
@@ -342,7 +342,7 @@ class _MemoryVerseDetailState extends ConsumerState<MemoryVerseDetail> {
             builder: (_) => VerseLensScreen(
               verse: widget.memory.verse,
               openPassage: (_) => widget.openVerse(widget.memory.verse),
-              askDavid: (_) => _david(),
+              askSamSam: (_) => _david(),
             ),
           ),
         ),
@@ -352,13 +352,13 @@ class _MemoryVerseDetailState extends ConsumerState<MemoryVerseDetail> {
       TextButton.icon(
         onPressed: _david,
         icon: const Icon(Icons.psychology_alt_outlined),
-        label: const Text('Ask David about this verse'),
+        label: const Text('Ask Sam-Sam about this verse'),
       ),
     ],
   );
   void _david() => Navigator.of(context).push(
     MaterialPageRoute(
-      builder: (_) => DavidScreen(
+      builder: (_) => SamSamScreen(
         initialQuestion:
             'Let’s talk about ${widget.memory.verse.reference}.\n\n${widget.memory.verse.text}',
       ),

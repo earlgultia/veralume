@@ -6,7 +6,7 @@ import 'package:veralume/data/database/app_database.dart';
 import 'package:veralume/data/models/journey_models.dart';
 import 'package:veralume/data/repositories/bible_repository.dart';
 import 'package:veralume/data/repositories/journey_repository.dart';
-import 'package:veralume/domain/assistant/david_assistant.dart';
+import 'package:veralume/domain/assistant/sam_sam_assistant.dart';
 
 void main() {
   sqfliteFfiInit();
@@ -52,6 +52,7 @@ void main() {
           'reading_days',
           'milestones',
           'journey_progress',
+          'prayer_journal',
         }),
       );
     },
@@ -141,7 +142,7 @@ void main() {
     );
   });
 
-  test('David answers local reading and saved-passage questions', () async {
+  test('Sam-Sam answers local reading and saved-passage questions', () async {
     now = DateTime.now().subtract(const Duration(days: 1));
     for (final chapter in [5, 6, 7]) {
       final matthew = (await bible.bookByOrder(1, 40))!;
@@ -158,10 +159,10 @@ void main() {
       1,
     )).single;
     await bible.toggleBookmark(john316.id);
-    final david = DavidAssistant(bible, journeyRepository: journey);
-    final history = await david.ask('David, what did I read yesterday?', 1);
+    final samSam = SamSamAssistant(bible, journeyRepository: journey);
+    final history = await samSam.ask('Sam-Sam, what did I read yesterday?', 1);
     expect(history.message, contains('Matthew 5–7'));
-    final saved = await david.ask('What verses did I save?', 1);
+    final saved = await samSam.ask('What verses did I save?', 1);
     expect(saved.verses.map((verse) => verse.id), contains(john316.id));
   });
 }

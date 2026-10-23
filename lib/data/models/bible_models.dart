@@ -70,11 +70,13 @@ class SavedVerse {
     required this.verse,
     this.content,
     this.color,
+    this.sermonTitle,
+    this.sermonNote,
     required this.createdAt,
   });
   final int id;
   final BibleVerse verse;
-  final String? content, color;
+  final String? content, color, sermonTitle, sermonNote;
   final DateTime createdAt;
 }
 

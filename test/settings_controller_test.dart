@@ -7,6 +7,19 @@ import 'package:veralume/presentation/providers/app_providers.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test('new installs use the refined Bible typography defaults', () async {
+    SharedPreferences.setMockInitialValues({});
+    final controller = SettingsController();
+    for (var attempt = 0; attempt < 20 && !controller.state.loaded; attempt++) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+    expect(controller.state.fontSize, 20);
+    expect(controller.state.lineHeight, 1.7);
+    expect(controller.state.samSamEnabled, isTrue);
+    expect(controller.state.samSamScale, .4);
+    controller.dispose();
+  });
+
   test('reading settings load and persist every user preference', () async {
     SharedPreferences.setMockInitialValues({
       'theme': ThemeMode.dark.index,
@@ -17,6 +30,7 @@ void main() {
       'onboarded': true,
       'fullScreen': true,
       'defaultVersionId': 2,
+      'dailyWordReminder': true,
     });
     final controller = SettingsController();
     for (var attempt = 0; attempt < 20 && !controller.state.loaded; attempt++) {
@@ -30,6 +44,8 @@ void main() {
     expect(controller.state.showVerseNumbers, isFalse);
     expect(controller.state.fullScreen, isTrue);
     expect(controller.state.defaultVersionId, 2);
+    expect(controller.state.dailyWordReminder, isTrue);
+    expect(controller.state.samSamEnabled, isTrue);
 
     await controller.update(
       controller.state.copyWith(
@@ -37,6 +53,9 @@ void main() {
         fontSize: 18,
         fullScreen: false,
         defaultVersionId: 3,
+        dailyWordReminder: false,
+        samSamEnabled: false,
+        samSamScale: .72,
       ),
     );
     final preferences = await SharedPreferences.getInstance();
@@ -44,6 +63,9 @@ void main() {
     expect(preferences.getDouble('fontSize'), 18);
     expect(preferences.getBool('fullScreen'), isFalse);
     expect(preferences.getInt('defaultVersionId'), 3);
+    expect(preferences.getBool('dailyWordReminder'), isFalse);
+    expect(preferences.getBool('samSamEnabled'), isFalse);
+    expect(preferences.getDouble('samSamScale'), .72);
 
     await controller.setDefaultVersion(5);
     expect(controller.state.defaultVersionId, 5);

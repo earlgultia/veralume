@@ -8,74 +8,49 @@ class WhatsNewScreen extends StatelessWidget {
 
   static const _features = <(IconData, String, String)>[
     (
-      Icons.psychology_alt_outlined,
-      'Today’s Word',
-      'A deeper daily Scripture experience built around one meaningful passage.',
+      Icons.psychology_alt_rounded,
+      'Sam-Sam · connected conversations',
+      'Online replies now take priority when internet access and secure AI configuration are available. The offline Bible guide remains available without a connection.',
     ),
     (
-      Icons.edit_note_outlined,
-      'Read · Understand · Reflect',
-      'Slow down and engage with Scripture through reading and reflection.',
+      Icons.calendar_month_rounded,
+      'Faith Calendar',
+      'Plan recurring devotionals, prayer time, Bible study, church, and personal faith events. Your schedule stays on this device.',
     ),
     (
-      Icons.bar_chart_rounded,
-      'Apply',
-      'Turn Scripture into a practical action for your day.',
+      Icons.smart_toy_rounded,
+      'A companion that fits',
+      'Sam-Sam starts small, can be resized, and can be turned on or off in Settings.',
     ),
     (
-      Icons.offline_bolt_outlined,
-      'Pray',
-      'Respond to God’s Word with your own private prayer.',
+      Icons.notifications_active_outlined,
+      'Today’s Word reminder',
+      'Improved mobile notification permission and schedule handling for the daily Scripture reminder.',
     ),
     (
-      Icons.nightlight_round,
-      'Quiet Reading',
-      'A peaceful, distraction-free way to read Scripture at night.',
+      Icons.palette_outlined,
+      'Theme picker',
+      'Choose a color palette from a convenient theme-selection modal.',
     ),
     (
-      Icons.history_rounded,
-      'Last Light',
-      'Return to the passage where you ended your nighttime reading.',
+      Icons.auto_stories_rounded,
+      'Stories and Bible quiz',
+      'Clearer story cards, Scripture references, quiz progress, and answer feedback.',
     ),
     (
-      Icons.bedtime_outlined,
-      'End My Reading',
-      'Finish with Scripture, reflection, or a simple good-night moment.',
+      Icons.wb_sunny_rounded,
+      'Daily Devotional',
+      'Begin the day grounded in a Bible verse, a short reflection, a practical lesson, and a prayer.',
     ),
     (
-      Icons.wb_sunny_outlined,
-      'Morning Return',
-      'Begin your day by returning to the Word you read the night before.',
+      Icons.volunteer_activism_rounded,
+      'Prayer Journal',
+      'Bring your worries into prayer, keep entries dated, and mark prayers answered. Entries stay on your device.',
     ),
     (
-      Icons.tonality_rounded,
-      'Warm Reading',
-      'A softer nighttime appearance for a calmer experience.',
-    ),
-    (
-      Icons.edit_note_rounded,
-      'Context Slider',
-      'Expand a single verse into its surrounding passage.',
-    ),
-    (
-      Icons.touch_app_rounded,
-      'Quick Context',
-      'See the verses before and after without leaving the Bible reader.',
-    ),
-    (
-      Icons.text_fields_rounded,
-      'Key Words',
-      'Quickly identify important words within the selected passage.',
-    ),
-    (
-      Icons.swipe_rounded,
-      'Give Me a Verse',
-      'Find an encouraging Scripture based on what you are experiencing.',
-    ),
-    (
-      Icons.history_rounded,
-      'Better Bible Study',
-      'Move naturally between Scripture, Connections, Focus, Reflection, and David.',
+      Icons.blur_on_rounded,
+      'Veralume UI 2.0',
+      'A calmer, clearer Bible-reading experience with refined surfaces, smoother transitions, and polished Sam-Sam motion.',
     ),
   ];
 
@@ -101,7 +76,7 @@ class WhatsNewScreen extends StatelessWidget {
             Semantics(
               header: true,
               child: Text(
-                'VERALUME 1.5.1 • RADIANT',
+                'VERALUME 1.5.4 • FAITH OVER FEAR',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.labelLarge?.copyWith(
                   color: AppTheme.gold,
@@ -112,7 +87,7 @@ class WhatsNewScreen extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'LIVING WORD',
+              'COURAGE ROOTED IN SCRIPTURE',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                 fontFamily: 'serif',
@@ -121,7 +96,7 @@ class WhatsNewScreen extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             const Text(
-              'Don’t just read Scripture. Live it.',
+              'Plan your rhythm, find courage in Scripture, and make Veralume feel more like yours.',
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 26),
@@ -162,7 +137,7 @@ class WhatsNewScreen extends StatelessWidget {
             ],
             const SizedBox(height: 8),
             const Text(
-              'Simple  •  Beautiful  •  Private  •  Offline  •  Meaningful',
+              'Courage  •  Scripture  •  Prayer  •  Hope',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: AppTheme.gold,

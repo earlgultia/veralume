@@ -54,9 +54,16 @@ class PassageReference {
 }
 
 class DailyLight {
-  const DailyLight(this.passage, this.reflection);
+  const DailyLight(
+    this.passage,
+    this.reflection, {
+    this.practicalLesson =
+        'Choose one small, faithful step you can take today.',
+    this.prayer =
+        'God, help me hear Your Word and live it with kindness today. Amen.',
+  });
   final PassageReference passage;
-  final String reflection;
+  final String reflection, practicalLesson, prayer;
 }
 
 class VerseConnection {

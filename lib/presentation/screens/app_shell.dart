@@ -1,5 +1,5 @@
 import 'dart:async';
-
+import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,8 +8,10 @@ import '../../core/theme/app_theme.dart';
 import '../../data/models/bible_models.dart';
 import '../../data/models/journey_models.dart';
 import '../../data/models/living_word_models.dart';
-import '../../data/services/online_david_service.dart';
-import '../../domain/assistant/david_assistant.dart';
+import '../../data/services/daily_word_notification_service.dart';
+import '../../data/services/online_sam_sam_service.dart';
+import '../../domain/assistant/sam_sam_assistant.dart';
+import '../../domain/assistant/sam_sam_companion.dart';
 import '../../domain/journey/journey_catalog.dart';
 import '../../domain/quiz/bible_quiz.dart';
 import '../providers/app_providers.dart';
@@ -20,12 +22,44 @@ import 'whats_new_screen.dart';
 import 'verse_lens_screen.dart';
 import 'memory_verses_screen.dart';
 import 'living_word_screen.dart';
+import '../widgets/sam_sam_animated_character.dart';
+import '../widgets/sam_sam_pop_out.dart';
+import 'prayer_journal_screen.dart';
+import 'faith_calendar_screen.dart';
 
 class OnboardingScreen extends ConsumerStatefulWidget {
   const OnboardingScreen({super.key});
 
   @override
   ConsumerState<OnboardingScreen> createState() => _OnboardingScreenState();
+}
+
+String _onlineFailureMessage(SamSamOnlineException error) {
+  final explanation = switch (error.kind) {
+    SamSamOnlineFailure.rateLimited =>
+      'The online service is busy right now. Please try again shortly.',
+    SamSamOnlineFailure.timeout =>
+      'Sam-Sam’s online reply took too long. Please try again.',
+    SamSamOnlineFailure.unconfigured =>
+      'Online Sam-Sam is not connected to its service yet.',
+    SamSamOnlineFailure.offline =>
+      'There is no internet connection. Please connect and try again.',
+    SamSamOnlineFailure.invalidConfiguration =>
+      'Online Sam-Sam could not authenticate with its service. Please check the app configuration.',
+    SamSamOnlineFailure.providerKeyInvalid =>
+      'Sam-Sam’s OpenRouter key is missing or rejected. Update OPENROUTER_API_KEY in Supabase Edge Function Secrets.',
+    SamSamOnlineFailure.providerCredits =>
+      'OpenRouter requires account credits for this request. Check the provider account or choose an available free model.',
+    SamSamOnlineFailure.modelsUnavailable =>
+      'The configured free AI models are unavailable right now. Please try again later.',
+    SamSamOnlineFailure.providerUnavailable =>
+      'Sam-Sam could not connect to OpenRouter. Please try again when the service is available.',
+    SamSamOnlineFailure.unavailable =>
+      'The online service could not be reached. Please try again.',
+    SamSamOnlineFailure.server =>
+      'The online service returned an error. Please try again.',
+  };
+  return explanation;
 }
 
 class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
@@ -108,8 +142,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           ],
         ),
         (
-          title: 'Meet David',
-          subtitle: 'A friendly Bible guide that works completely offline.',
+          title: 'Meet Sam-Sam',
+          subtitle:
+              'A friendly Bible companion inspired by the book of Psalms.',
           icon: Icons.chat_bubble_rounded,
           items: [
             (
@@ -125,7 +160,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             (
               Icons.touch_app_rounded,
               'Open every result',
-              'Tap a verse in David’s reply to read it in its full chapter.',
+              'Tap a verse in Sam-Sam’s reply to read it in its full chapter.',
             ),
           ],
         ),
@@ -192,7 +227,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 controller: _controller,
                 onPageChanged: (value) => setState(() => _page = value),
                 children: [
-                  const _DavidWelcomeTutorial(),
+                  const _SamSamWelcomeTutorial(),
                   for (final feature in _features)
                     _FeatureTutorial(feature: feature),
                 ],
@@ -249,8 +284,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   );
 }
 
-class _DavidWelcomeTutorial extends ConsumerWidget {
-  const _DavidWelcomeTutorial();
+class _SamSamWelcomeTutorial extends ConsumerWidget {
+  const _SamSamWelcomeTutorial();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => Padding(
@@ -258,7 +293,7 @@ class _DavidWelcomeTutorial extends ConsumerWidget {
     child: Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        const _DavidAvatar(size: 132),
+        const _SamSamAvatar(size: 132),
         const SizedBox(height: 24),
         const Text(
           'Welcome to VERALUME',
@@ -272,7 +307,7 @@ class _DavidWelcomeTutorial extends ConsumerWidget {
         ),
         const SizedBox(height: 12),
         const Text(
-          'Hi, I’m David. I’ll help you discover everything in your offline Bible app.',
+          'Hi, I’m Sam-Sam! My name is inspired by the Psalms. I can help you explore the Bible and talk through your questions.',
           textAlign: TextAlign.center,
           style: TextStyle(color: Color(0xFFEFE4C7), fontSize: 18, height: 1.4),
         ),
@@ -423,8 +458,43 @@ class AppShell extends ConsumerStatefulWidget {
   ConsumerState<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends ConsumerState<AppShell> {
+class _AppShellState extends ConsumerState<AppShell>
+    with WidgetsBindingObserver {
   int index = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _syncDailyWordReminders(ref.read(settingsProvider));
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _syncDailyWordReminders(ref.read(settingsProvider));
+    }
+  }
+
+  Future<void> _syncDailyWordReminders(ReadingSettings settings) async {
+    if (!settings.dailyWordReminder) return;
+    try {
+      await DailyWordNotificationService.instance.scheduleDailyWords(
+        repository: ref.read(bibleRepositoryProvider),
+        versionId: settings.defaultVersionId,
+      );
+    } catch (error) {
+      debugPrint('Could not refresh Daily Word reminders: $error');
+    }
+  }
 
   Future<void> _openJourneyPassage(PassageReference passage) async {
     final bible = ref.read(bibleRepositoryProvider);
@@ -504,6 +574,16 @@ class _AppShellState extends ConsumerState<AppShell> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(
+      settingsProvider.select(
+        (settings) => (settings.defaultVersionId, settings.dailyWordReminder),
+      ),
+      (previous, next) {
+        if (next.$2 && previous?.$2 == true && previous?.$1 != next.$1) {
+          _syncDailyWordReminders(ref.read(settingsProvider));
+        }
+      },
+    );
     const primaryTabs = [0, 1, 3, 4, 5];
     final screens = [
       HomeScreen(
@@ -521,15 +601,30 @@ class _AppShellState extends ConsumerState<AppShell> {
       BookmarksScreen(refreshToken: index),
       const SettingsScreen(),
     ];
+    final samSamSettings = ref.watch(
+      settingsProvider.select(
+        (settings) => (settings.samSamEnabled, settings.samSamScale),
+      ),
+    );
     return Scaffold(
-      body: IndexedStack(index: index, children: screens),
-      floatingActionButton: FloatingActionButton.extended(
-        tooltip: 'Ask David',
-        onPressed: () => Navigator.of(
-          context,
-        ).push(MaterialPageRoute(builder: (_) => const DavidScreen())),
-        icon: const Icon(Icons.chat_bubble_outline_rounded),
-        label: const Text('Ask David'),
+      body: Stack(
+        children: [
+          IndexedStack(index: index, children: screens),
+          if (samSamSettings.$1)
+            SamSamPopOut(
+              initialScale: samSamSettings.$2,
+              onScaleChanged: (scale) => ref
+                  .read(settingsProvider.notifier)
+                  .update(
+                    ref.read(settingsProvider).copyWith(samSamScale: scale),
+                  ),
+              onAsk: (question) => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => SamSamScreen(initialQuestion: question),
+                ),
+              ),
+            ),
+        ],
       ),
       bottomNavigationBar: SafeArea(
         top: false,
@@ -673,11 +768,13 @@ class PageFrame extends StatelessWidget {
     required this.child,
     this.actions = const [],
     this.highlightTitle = false,
+    this.bottomPadding = 100,
   });
   final String title;
   final Widget child;
   final List<Widget> actions;
   final bool highlightTitle;
+  final double bottomPadding;
   @override
   Widget build(BuildContext context) => SafeArea(
     bottom: false,
@@ -700,16 +797,8 @@ class PageFrame extends StatelessWidget {
           backgroundColor: Colors.transparent,
         ),
         SliverPadding(
-          padding: const EdgeInsets.fromLTRB(18, 0, 18, 100),
-          sliver: SliverToBoxAdapter(
-            child: Column(
-              children: [
-                child,
-                const SizedBox(height: 36),
-                const RadiantFooter(),
-              ],
-            ),
-          ),
+          padding: EdgeInsets.fromLTRB(18, 0, 18, bottomPadding),
+          sliver: SliverToBoxAdapter(child: child),
         ),
       ],
     ),
@@ -748,9 +837,9 @@ class HomeScreen extends ConsumerWidget {
         builder: (_) => LivingWordScreen(
           session: active,
           openVerse: openVerse,
-          askDavid: (verse) => Navigator.of(context).push(
+          askSamSam: (verse) => Navigator.of(context).push(
             MaterialPageRoute(
-              builder: (_) => DavidScreen(
+              builder: (_) => SamSamScreen(
                 initialQuestion:
                     'Help me understand ${verse.reference}.\n\n${verse.text}',
               ),
@@ -864,8 +953,8 @@ class HomeScreen extends ConsumerWidget {
               ],
               const SizedBox(height: 28),
               const _HomeHeading(
-                'Your Light for Today',
-                'Scripture and a small reflection',
+                'Daily Devotional',
+                'Verse, reflection, practical lesson, and prayer',
               ),
               const SizedBox(height: 12),
               _DailyVerseCard(
@@ -875,6 +964,41 @@ class HomeScreen extends ConsumerWidget {
                   MaterialPageRoute(
                     builder: (_) => DailyLightScreen(openPassage: openPassage),
                   ),
+                ),
+              ),
+              const SizedBox(height: 28),
+              _HomeHeading(
+                'Plan Your Time With God',
+                'Build a devotional rhythm and keep faith events in one place',
+              ),
+              const SizedBox(height: 12),
+              GlassCard(
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const FaithCalendarScreen(),
+                  ),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.calendar_month_rounded, color: AppTheme.gold),
+                    SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Faith Calendar',
+                            style: TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            'Schedule devotionals, prayer, study, and church',
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(Icons.chevron_right_rounded),
+                  ],
                 ),
               ),
               const SizedBox(height: 28),
@@ -907,9 +1031,9 @@ class HomeScreen extends ConsumerWidget {
                   MaterialPageRoute(
                     builder: (_) => GiveMeAVerseScreen(
                       openVerse: openVerse,
-                      askDavid: (verse) => Navigator.of(context).push(
+                      askSamSam: (verse) => Navigator.of(context).push(
                         MaterialPageRoute(
-                          builder: (_) => DavidScreen(
+                          builder: (_) => SamSamScreen(
                             initialQuestion:
                                 'Let’s talk about ${verse.reference}.\n\n${verse.text}',
                           ),
@@ -920,7 +1044,10 @@ class HomeScreen extends ConsumerWidget {
                 ),
                 child: const Row(
                   children: [
-                    Icon(Icons.menu_book_rounded, color: AppTheme.gold),
+                    Icon(
+                      Icons.volunteer_activism_rounded,
+                      color: AppTheme.gold,
+                    ),
                     SizedBox(width: 14),
                     Expanded(
                       child: Column(
@@ -989,6 +1116,17 @@ class HomeScreen extends ConsumerWidget {
                       ),
                       _HomeAction(
                         half,
+                        'Prayer Journal',
+                        'Write and revisit prayers',
+                        Icons.volunteer_activism_rounded,
+                        () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const PrayerJournalScreen(),
+                          ),
+                        ),
+                      ),
+                      _HomeAction(
+                        half,
                         'Memory Verses',
                         'Practice Scripture',
                         Icons.psychology_alt_outlined,
@@ -1003,7 +1141,7 @@ class HomeScreen extends ConsumerWidget {
                         half,
                         'My Living Word',
                         'Private reflections and actions',
-                        Icons.menu_book_outlined,
+                        Icons.checklist_rounded,
                         () => Navigator.of(context).push(
                           MaterialPageRoute(
                             builder: (_) => LivingWordHistoryScreen(
@@ -1018,12 +1156,12 @@ class HomeScreen extends ConsumerWidget {
                       ),
                       _HomeAction(
                         constraints.maxWidth,
-                        'Ask David',
-                        'Find verses and explore Bible questions',
-                        Icons.chat_bubble_rounded,
+                        'Bible Facts',
+                        'Quick facts from Scripture',
+                        Icons.lightbulb_outline_rounded,
                         () => Navigator.of(context).push(
                           MaterialPageRoute(
-                            builder: (_) => const DavidScreen(),
+                            builder: (_) => const BibleFactsScreen(),
                           ),
                         ),
                         featured: true,
@@ -1032,7 +1170,7 @@ class HomeScreen extends ConsumerWidget {
                         constraints.maxWidth,
                         'Bible Stories',
                         '22 Scripture stories · completely offline',
-                        Icons.menu_book_rounded,
+                        Icons.history_edu_rounded,
                         () => Navigator.of(context).push(
                           MaterialPageRoute(
                             builder: (_) => const BibleStoriesScreen(),
@@ -1442,6 +1580,44 @@ class BibleStoriesScreen extends StatelessWidget {
     body: ListView(
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 32),
       children: [
+        GlassCard(
+          child: Row(
+            children: [
+              Container(
+                width: 54,
+                height: 54,
+                decoration: BoxDecoration(
+                  color: AppTheme.gold.withValues(alpha: .18),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: const Icon(
+                  Icons.auto_stories_rounded,
+                  color: AppTheme.gold,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${_bibleStories.length} stories to explore',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Read the story, meet its people, and explore Scripture.',
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
@@ -1473,17 +1649,26 @@ class BibleStoriesScreen extends StatelessWidget {
                   ),
                 ),
                 child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Container(
-                      width: 52,
-                      height: 52,
+                      width: 50,
+                      height: 50,
+                      alignment: Alignment.center,
                       decoration: BoxDecoration(
-                        color: AppTheme.gold.withValues(alpha: .18),
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            AppTheme.gold.withValues(alpha: .26),
+                            AppTheme.gold.withValues(alpha: .08),
+                          ],
+                        ),
                         borderRadius: BorderRadius.circular(17),
                       ),
-                      child: Icon(story.icon, color: AppTheme.gold),
+                      child: Icon(story.icon, color: AppTheme.gold, size: 26),
                     ),
-                    const SizedBox(width: 15),
+                    const SizedBox(width: 14),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1491,13 +1676,33 @@ class BibleStoriesScreen extends StatelessWidget {
                           Text(
                             story.title,
                             style: Theme.of(context).textTheme.titleMedium
-                                ?.copyWith(fontWeight: FontWeight.bold),
+                                ?.copyWith(fontWeight: FontWeight.w800),
                           ),
-                          const SizedBox(height: 3),
-                          Text(story.subtitle),
+                          const SizedBox(height: 4),
+                          Text(
+                            story.subtitle,
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                                ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            story.passages.first.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.labelMedium
+                                ?.copyWith(
+                                  color: AppTheme.gold,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                          ),
                         ],
                       ),
                     ),
+                    const SizedBox(width: 4),
                     const Icon(Icons.chevron_right_rounded),
                   ],
                 ),
@@ -1505,6 +1710,78 @@ class BibleStoriesScreen extends StatelessWidget {
             },
           ),
           if (index != _bibleStories.length - 1) const SizedBox(height: 12),
+        ],
+      ],
+    ),
+  );
+}
+
+class BibleFactsScreen extends StatelessWidget {
+  const BibleFactsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Bible Facts')),
+    body: ListView(
+      padding: const EdgeInsets.fromLTRB(18, 12, 18, 32),
+      children: [
+        GlassCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'A little Scripture knowledge',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Browse these quick facts offline, or tap Sam-Sam whenever he pops up to explore one together.',
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        for (final fact in SamSamFacts.facts) ...[
+          GlassCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  fact.message,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyLarge?.copyWith(height: 1.45),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        fact.reference,
+                        style: const TextStyle(
+                          color: AppTheme.gold,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    TextButton.icon(
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              SamSamScreen(initialQuestion: fact.question),
+                        ),
+                      ),
+                      icon: const Icon(Icons.chat_bubble_outline_rounded),
+                      label: const Text('Explore with Sam-Sam'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
         ],
       ],
     ),
@@ -1526,30 +1803,46 @@ class _BibleStoryScreen extends ConsumerWidget {
         builder: (context, snapshot) => ListView(
           padding: const EdgeInsets.fromLTRB(22, 12, 22, 36),
           children: [
-            Icon(story.icon, size: 58, color: AppTheme.gold),
-            const SizedBox(height: 18),
-            Text(
-              story.title,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                fontFamily: 'serif',
-                fontWeight: FontWeight.bold,
+            GlassCard(
+              child: Column(
+                children: [
+                  Container(
+                    width: 68,
+                    height: 68,
+                    decoration: BoxDecoration(
+                      color: AppTheme.gold.withValues(alpha: .16),
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                    child: Icon(story.icon, size: 36, color: AppTheme.gold),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    story.title,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                      fontFamily: 'serif',
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 7),
+                  Text(
+                    story.subtitle,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.titleSmall?.copyWith(color: AppTheme.gold),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 7),
-            Text(
-              story.subtitle,
-              textAlign: TextAlign.center,
-              style: Theme.of(
-                context,
-              ).textTheme.titleSmall?.copyWith(color: AppTheme.gold),
-            ),
-            const SizedBox(height: 28),
-            Text(
-              story.summary,
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                height: 1.65,
-                fontFamily: 'serif',
+            const SizedBox(height: 14),
+            GlassCard(
+              child: Text(
+                story.summary,
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  height: 1.65,
+                  fontFamily: 'serif',
+                ),
               ),
             ),
             if (story.people.isNotEmpty) ...[
@@ -2199,6 +2492,252 @@ class _Quick extends StatelessWidget {
   );
 }
 
+class _BibleVersionSelector extends StatelessWidget {
+  const _BibleVersionSelector({
+    required this.selectedVersion,
+    required this.onTap,
+  });
+
+  final BibleVersion selectedVersion;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Material(
+      color: theme.colorScheme.surfaceContainerHighest,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              CircleAvatar(
+                backgroundColor: theme.colorScheme.primaryContainer,
+                foregroundColor: theme.colorScheme.primary,
+                child: const Icon(Icons.translate_rounded),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Bible version',
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      '${selectedVersion.name} (${selectedVersion.abbreviation})',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      selectedVersion.language,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(Icons.expand_more_rounded, color: theme.colorScheme.primary),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BibleVersionPicker extends StatefulWidget {
+  const _BibleVersionPicker({
+    required this.versions,
+    required this.selectedVersionId,
+  });
+
+  final List<BibleVersion> versions;
+  final int selectedVersionId;
+
+  @override
+  State<_BibleVersionPicker> createState() => _BibleVersionPickerState();
+}
+
+class _BibleVersionPickerState extends State<_BibleVersionPicker> {
+  final _searchController = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final query = _query.trim().toLowerCase();
+    final versions = widget.versions.where((version) {
+      if (query.isEmpty) return true;
+      return version.name.toLowerCase().contains(query) ||
+          version.abbreviation.toLowerCase().contains(query) ||
+          version.language.toLowerCase().contains(query);
+    }).toList();
+    final maxHeight = MediaQuery.sizeOf(context).height * .82;
+
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: maxHeight),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Choose a Bible version', style: theme.textTheme.titleLarge),
+            const SizedBox(height: 6),
+            Text(
+              'Select the translation you want to read.',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _searchController,
+              autofocus: false,
+              onChanged: (value) => setState(() => _query = value),
+              decoration: InputDecoration(
+                hintText: 'Search name or language',
+                prefixIcon: const Icon(Icons.search_rounded),
+                suffixIcon: _query.isEmpty
+                    ? null
+                    : IconButton(
+                        tooltip: 'Clear search',
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _query = '');
+                        },
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Flexible(
+              child: versions.isEmpty
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Text(
+                          'No Bible versions match “${_query.trim()}”.',
+                          textAlign: TextAlign.center,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    )
+                  : ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: versions.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 6),
+                      itemBuilder: (context, index) {
+                        final version = versions[index];
+                        final isSelected =
+                            version.id == widget.selectedVersionId;
+                        return Material(
+                          color: isSelected
+                              ? theme.colorScheme.primaryContainer.withValues(
+                                  alpha: .65,
+                                )
+                              : theme.colorScheme.surfaceContainerHighest
+                                    .withValues(alpha: .55),
+                          borderRadius: BorderRadius.circular(16),
+                          child: ListTile(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            leading: Icon(
+                              isSelected
+                                  ? Icons.check_circle_rounded
+                                  : Icons.menu_book_outlined,
+                              color: isSelected
+                                  ? theme.colorScheme.primary
+                                  : theme.colorScheme.onSurfaceVariant,
+                            ),
+                            title: Text(
+                              version.name,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            subtitle: Text(
+                              '${version.abbreviation} · ${version.language}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            trailing: isSelected
+                                ? Text(
+                                    'Selected',
+                                    style: theme.textTheme.labelSmall?.copyWith(
+                                      color: theme.colorScheme.primary,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  )
+                                : null,
+                            onTap: () => Navigator.of(context).pop(version),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BibleVersionLoadState extends StatelessWidget {
+  const _BibleVersionLoadState({required this.message, this.onRetry});
+
+  final String message;
+  final VoidCallback? onRetry;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 12),
+    child: Column(
+      children: [
+        Icon(
+          Icons.menu_book_outlined,
+          size: 34,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+        const SizedBox(height: 12),
+        Text(message, textAlign: TextAlign.center),
+        if (onRetry != null) ...[
+          const SizedBox(height: 8),
+          TextButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh_rounded),
+            label: const Text('Try again'),
+          ),
+        ],
+      ],
+    ),
+  );
+}
+
 class BibleScreen extends ConsumerStatefulWidget {
   const BibleScreen({super.key});
   @override
@@ -2206,51 +2745,69 @@ class BibleScreen extends ConsumerStatefulWidget {
 }
 
 class _BibleScreenState extends ConsumerState<BibleScreen> {
-  int? versionId;
-  BibleBook? book;
   @override
   Widget build(BuildContext context) {
     final repo = ref.read(bibleRepositoryProvider);
+    final preferredVersionId = ref.watch(
+      settingsProvider.select((settings) => settings.defaultVersionId),
+    );
     return PageFrame(
       title: 'Bible',
       child: FutureBuilder(
         future: repo.versions(),
         builder: (c, vs) {
-          if (!vs.hasData) {
-            return const Center(child: CircularProgressIndicator());
+          if (vs.hasError) {
+            return _BibleVersionLoadState(
+              message: 'Bible versions couldn’t be loaded.',
+              onRetry: () => setState(() {}),
+            );
           }
-          final preferredVersion = ref.read(settingsProvider).defaultVersionId;
-          versionId ??=
-              vs.data!.any((version) => version.id == preferredVersion)
-              ? preferredVersion
-              : vs.data!.first.id;
+          if (vs.connectionState != ConnectionState.done) {
+            return const SizedBox(
+              height: 180,
+              child: Center(child: CircularProgressIndicator()),
+            );
+          }
+          final versions = vs.data ?? <BibleVersion>[];
+          if (versions.isEmpty) {
+            return const _BibleVersionLoadState(
+              message: 'No Bible versions are available.',
+            );
+          }
+          final selectedVersion = versions.firstWhere(
+            (version) => version.id == preferredVersionId,
+            orElse: () => versions.first,
+          );
           return Column(
             children: [
-              DropdownButtonFormField<int>(
-                initialValue: versionId,
-                decoration: const InputDecoration(labelText: 'Bible version'),
-                items: vs.data!
-                    .map(
-                      (v) => DropdownMenuItem(
-                        value: v.id,
-                        child: Text('${v.name} (${v.abbreviation})'),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (v) {
-                  if (v == null) return;
-                  setState(() {
-                    versionId = v;
-                    book = null;
-                  });
-                  ref.read(settingsProvider.notifier).setDefaultVersion(v);
-                },
+              _BibleVersionSelector(
+                selectedVersion: selectedVersion,
+                onTap: () => _chooseVersion(versions, selectedVersion.id),
               ),
               const SizedBox(height: 16),
               FutureBuilder(
-                future: repo.books(versionId!),
+                future: repo.books(selectedVersion.id),
                 builder: (c, bs) {
-                  if (!bs.hasData) return const LinearProgressIndicator();
+                  if (bs.hasError) {
+                    return _BibleVersionLoadState(
+                      message:
+                          'Books couldn’t be loaded for '
+                          '${selectedVersion.abbreviation}.',
+                      onRetry: () => setState(() {}),
+                    );
+                  }
+                  if (bs.connectionState != ConnectionState.done) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 24),
+                      child: Center(child: CircularProgressIndicator()),
+                    );
+                  }
+                  final books = bs.data ?? <BibleBook>[];
+                  if (books.isEmpty) {
+                    return const _BibleVersionLoadState(
+                      message: 'This Bible version has no available books.',
+                    );
+                  }
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -2274,11 +2831,11 @@ class _BibleScreenState extends ConsumerState<BibleScreen> {
                                 crossAxisSpacing: 8,
                                 mainAxisSpacing: 8,
                               ),
-                          itemCount: bs.data!
+                          itemCount: books
                               .where((b) => b.testament == testament)
                               .length,
                           itemBuilder: (c, i) {
-                            final b = bs.data!
+                            final b = books
                                 .where((x) => x.testament == testament)
                                 .elementAt(i);
                             return Card(
@@ -2305,6 +2862,24 @@ class _BibleScreenState extends ConsumerState<BibleScreen> {
         },
       ),
     );
+  }
+
+  Future<void> _chooseVersion(
+    List<BibleVersion> versions,
+    int selectedVersionId,
+  ) async {
+    final selected = await showModalBottomSheet<BibleVersion>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (_) => _BibleVersionPicker(
+        versions: versions,
+        selectedVersionId: selectedVersionId,
+      ),
+    );
+    if (selected == null || !mounted) return;
+    await ref.read(settingsProvider.notifier).setDefaultVersion(selected.id);
   }
 
   Future<void> _chapters(BuildContext context, BibleBook b) async {
@@ -2518,6 +3093,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
   bool _focusApplied = false;
   bool _quiet = false;
   bool _controlsVisible = true;
+  bool _switchingVersion = false;
   Timer? _controlsTimer;
   Timer? _meaningfulReadTimer;
   String? _pendingReadingKey;
@@ -2583,6 +3159,76 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
     if (!_quiet || settings.quietControls == 'always') return;
     setState(() => _controlsVisible = !_controlsVisible);
     if (_controlsVisible) _scheduleControlsHide(settings);
+  }
+
+  Future<void> _switchBibleVersion() async {
+    if (_switchingVersion) return;
+    setState(() => _switchingVersion = true);
+    try {
+      final repo = ref.read(bibleRepositoryProvider);
+      final versions = await repo.versions();
+      if (!mounted) return;
+      if (versions.isEmpty) {
+        _showVersionMessage('No Bible versions are available.');
+        return;
+      }
+      final currentVersionId = ref.read(settingsProvider).defaultVersionId;
+      final selectedVersion = await showModalBottomSheet<BibleVersion>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        showDragHandle: true,
+        builder: (_) => _BibleVersionPicker(
+          versions: versions,
+          selectedVersionId: currentVersionId,
+        ),
+      );
+      if (selectedVersion == null || !mounted) return;
+      if (selectedVersion.id == currentVersionId) return;
+
+      final targetBookId = await repo.equivalentBook(
+        bookId,
+        selectedVersion.id,
+      );
+      if (!mounted) return;
+      if (targetBookId == null) {
+        _showVersionMessage(
+          'This book is not available in ${selectedVersion.abbreviation}.',
+        );
+        return;
+      }
+
+      final chapterCount = await repo.chapterCount(targetBookId);
+      if (!mounted) return;
+      if (chapterCount == 0) {
+        _showVersionMessage(
+          'This book has no chapters in ${selectedVersion.abbreviation}.',
+        );
+        return;
+      }
+      final targetChapter = chapter.clamp(1, chapterCount);
+      await ref
+          .read(settingsProvider.notifier)
+          .setDefaultVersion(selectedVersion.id);
+      if (!mounted) return;
+      setState(() {
+        bookId = targetBookId;
+        chapter = targetChapter;
+        selected.clear();
+      });
+    } catch (error) {
+      if (mounted) {
+        _showVersionMessage('Could not switch Bible version: $error');
+      }
+    } finally {
+      if (mounted) setState(() => _switchingVersion = false);
+    }
+  }
+
+  void _showVersionMessage(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -2737,38 +3383,16 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
                                       ),
                               ),
                       ),
-                    FutureBuilder(
-                      future: repo.versions(),
-                      builder: (context, snapshot) => PopupMenuButton<int>(
-                        tooltip: 'Switch Bible version',
-                        icon: const Icon(Icons.translate),
-                        itemBuilder: (_) => [
-                          for (final version
-                              in snapshot.data ?? <BibleVersion>[])
-                            PopupMenuItem(
-                              value: version.id,
-                              child: Text(
-                                '${version.name} (${version.abbreviation})',
-                              ),
-                            ),
-                        ],
-                        onSelected: (versionId) async {
-                          final target = await repo.equivalentBook(
-                            bookId,
-                            versionId,
-                          );
-                          if (target != null && mounted) {
-                            await ref
-                                .read(settingsProvider.notifier)
-                                .setDefaultVersion(versionId);
-                            if (!mounted) return;
-                            setState(() {
-                              bookId = target;
-                              selected.clear();
-                            });
-                          }
-                        },
-                      ),
+                    IconButton(
+                      tooltip: 'Switch Bible version',
+                      onPressed: _switchingVersion ? null : _switchBibleVersion,
+                      icon: _switchingVersion
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.translate_rounded),
                     ),
                     IconButton(
                       tooltip: _quiet
@@ -2900,7 +3524,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
                         .where((verse) => selected.contains(verse.id))
                         .toList(),
                   ),
-                  icon: const Icon(Icons.edit),
+                  icon: const Icon(Icons.more_horiz_rounded),
                   label: Text(
                     selected.length == 1
                         ? '1 verse selected'
@@ -2999,7 +3623,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.short_text_rounded),
+                leading: const Icon(Icons.menu_book_outlined),
                 title: const Text('Quick context'),
                 enabled: selectedVerses.length == 1,
                 subtitle: const Text('See the surrounding passage here'),
@@ -3011,7 +3635,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
                       },
               ),
               ListTile(
-                leading: const Icon(Icons.auto_awesome_outlined),
+                leading: const Icon(Icons.center_focus_strong),
                 title: const Text('Verse Lens'),
                 enabled: selectedVerses.length == 1,
                 subtitle: const Text('See this verse in context'),
@@ -3023,7 +3647,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
                       },
               ),
               ListTile(
-                leading: const Icon(Icons.auto_awesome_outlined),
+                leading: const Icon(Icons.self_improvement),
                 title: const Text('Focus'),
                 enabled: selectedVerses.length == 1,
                 subtitle: const Text('Read, reflect, respond, and pray'),
@@ -3035,14 +3659,14 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
                           MaterialPageRoute(
                             builder: (_) => FocusVerseScreen(
                               verse: first,
-                              onAskDavid: () => _askDavid(first),
+                              onAskSamSam: () => _askSamSam(first),
                             ),
                           ),
                         );
                       },
               ),
               ListTile(
-                leading: const Icon(Icons.highlight),
+                leading: const Icon(Icons.format_color_fill_rounded),
                 title: const Text('Highlight'),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -3112,14 +3736,14 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
                       },
               ),
               ListTile(
-                leading: const Icon(Icons.psychology_alt_outlined),
-                title: const Text('Ask David'),
+                leading: const Icon(Icons.chat_bubble_outline_rounded),
+                title: const Text('Ask Sam-Sam'),
                 enabled: selectedVerses.length == 1,
                 onTap: selectedVerses.length != 1
                     ? null
                     : () {
                         Navigator.pop(c);
-                        _askDavid(first);
+                        _askSamSam(first);
                       },
               ),
               ListTile(
@@ -3203,9 +3827,9 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
     if (mounted) setState(selected.clear);
   }
 
-  void _askDavid(BibleVerse verse) => Navigator.of(context).push(
+  void _askSamSam(BibleVerse verse) => Navigator.of(context).push(
     MaterialPageRoute(
-      builder: (_) => DavidScreen(
+      builder: (_) => SamSamScreen(
         initialQuestion:
             'Let’s talk about ${verse.reference}.\n\n${verse.text}',
       ),
@@ -3217,7 +3841,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
       builder: (_) => VerseLensScreen(
         verse: verse,
         openPassage: _openConnectedPassage,
-        askDavid: _askDavid,
+        askSamSam: _askSamSam,
       ),
     ),
   );
@@ -3459,7 +4083,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
         MaterialPageRoute(
           builder: (_) => FocusVerseScreen(
             verse: verse,
-            onAskDavid: () => _askDavid(verse),
+            onAskSamSam: () => _askSamSam(verse),
           ),
         ),
       );
@@ -3515,44 +4139,43 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen>
   }
 }
 
-class _DavidMessage {
-  const _DavidMessage(
+class _SamSamMessage {
+  const _SamSamMessage(
     this.text, {
-    required this.fromDavid,
+    required this.fromSamSam,
     this.verses = const [],
     this.online = false,
   });
   final String text;
-  final bool fromDavid;
+  final bool fromSamSam;
   final bool online;
   final List<BibleVerse> verses;
 }
 
-class DavidScreen extends ConsumerStatefulWidget {
-  const DavidScreen({super.key, this.initialQuestion});
+class SamSamScreen extends ConsumerStatefulWidget {
+  const SamSamScreen({super.key, this.initialQuestion});
   final String? initialQuestion;
 
   @override
-  ConsumerState<DavidScreen> createState() => _DavidScreenState();
+  ConsumerState<SamSamScreen> createState() => _SamSamScreenState();
 }
 
-class _DavidScreenState extends ConsumerState<DavidScreen> {
+class _SamSamScreenState extends ConsumerState<SamSamScreen> {
+  static const _welcomeMessage =
+      'Hi, I’m Sam-Sam. Ask me about Scripture, share what’s on your mind, or ask for practical help. I’ll keep our conversation in context.';
+
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
-  late final DavidAssistant _assistant;
-  late final OnlineDavidService _online;
-  final _messages = <_DavidMessage>[
-    const _DavidMessage(
-      'Hello, I’m David. I can help you with the Bible without internet. Ask me to find a verse, explain a Bible story, or help when you feel worried or sad.',
-      fromDavid: true,
-    ),
+  late final SamSamAssistant _assistant;
+  late final OnlineSamSamService _online;
+  final _messages = <_SamSamMessage>[
+    const _SamSamMessage(_welcomeMessage, fromSamSam: true),
   ];
   bool _thinking = false;
-  bool _onlineAvailable = false;
   String _language = 'English';
 
   static const _suggestions = [
-    'Hi David!',
+    'Hi Sam-Sam!',
     'What can you do?',
     'What did I read yesterday?',
     'I feel anxious',
@@ -3563,12 +4186,11 @@ class _DavidScreenState extends ConsumerState<DavidScreen> {
   @override
   void initState() {
     super.initState();
-    _assistant = DavidAssistant(
+    _assistant = SamSamAssistant(
       ref.read(bibleRepositoryProvider),
       journeyRepository: ref.read(journeyRepositoryProvider),
     );
-    _online = OnlineDavidService();
-    _refreshConnection();
+    _online = OnlineSamSamService();
     if (widget.initialQuestion != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _controller.text = widget.initialQuestion!;
@@ -3577,15 +4199,11 @@ class _DavidScreenState extends ConsumerState<DavidScreen> {
     }
   }
 
-  Future<void> _refreshConnection() async {
-    final available = await _online.canUseOnline();
-    if (mounted) setState(() => _onlineAvailable = available);
-  }
-
   @override
   void dispose() {
     _controller.dispose();
     _scrollController.dispose();
+    _online.dispose();
     super.dispose();
   }
 
@@ -3593,53 +4211,125 @@ class _DavidScreenState extends ConsumerState<DavidScreen> {
     final question = (suggested ?? _controller.text).trim();
     if (question.isEmpty || _thinking) return;
     _controller.clear();
+    final history = _messages
+        .where((message) => message.text != _welcomeMessage)
+        .toList()
+        .reversed
+        .take(6)
+        .toList()
+        .reversed
+        .map(
+          (message) => {
+            'role': message.fromSamSam ? 'assistant' : 'user',
+            'content': message.text.length <= 1200
+                ? message.text
+                : message.text.substring(0, 1200),
+          },
+        )
+        .toList();
+    final offlineConversation = _messages
+        .where((message) => !message.fromSamSam)
+        .map((message) => message.text)
+        .toList();
     setState(() {
-      _messages.add(_DavidMessage(question, fromDavid: false));
+      _messages.add(_SamSamMessage(question, fromSamSam: false));
       _thinking = true;
     });
     _scrollToEnd();
-    DavidReply reply;
+    SamSamReply reply;
     var usedOnline = false;
-    if (_onlineAvailable) {
-      try {
-        reply = DavidReply(
-          await _online.ask(question: question, language: _language),
-        );
-        usedOnline = true;
-      } on DavidOnlineException catch (error) {
-        reply = await _assistant.ask(
-          question,
-          ref.read(settingsProvider).defaultVersionId,
-        );
-        _onlineAvailable = false;
-        if (mounted) {
-          final reason = error.kind == DavidOnlineFailure.rateLimited
-              ? 'Online limit reached'
-              : error.kind == DavidOnlineFailure.timeout
-              ? 'Online request timed out'
-              : 'Online David is unavailable';
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('$reason — using offline Scripture.')),
+    try {
+      if (_online.configured) {
+        try {
+          reply = SamSamReply(
+            await _online.ask(
+              question: question,
+              language: _language,
+              conversation: history,
+            ),
           );
+          usedOnline = true;
+        } on SamSamOnlineException catch (error) {
+          reply = await _replyOffline(question, offlineConversation);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  '${_onlineFailureMessage(error)} Using the offline Bible guide.',
+                ),
+              ),
+            );
+          }
         }
+      } else {
+        reply = await _replyOffline(question, offlineConversation);
       }
-    } else {
-      reply = await _assistant.ask(
-        question,
-        ref.read(settingsProvider).defaultVersionId,
+    } on Exception {
+      reply = const SamSamReply(
+        'I couldn’t prepare a reply just now. Please try sending your message again.',
       );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Sam-Sam could not reach the online service or local Bible data. '
+              'Please try again when the connection is available.',
+            ),
+          ),
+        );
+      }
     }
     if (!mounted) return;
     setState(() {
       _messages.add(
-        _DavidMessage(
+        _SamSamMessage(
           reply.message,
-          fromDavid: true,
+          fromSamSam: true,
           verses: reply.verses,
           online: usedOnline,
         ),
       );
       _thinking = false;
+    });
+    _scrollToEnd();
+  }
+
+  Future<SamSamReply> _replyOffline(
+    String question,
+    List<String> offlineConversation,
+  ) => _assistant.ask(
+    question,
+    ref.read(settingsProvider).defaultVersionId,
+    language: _language,
+    conversation: offlineConversation,
+  );
+
+  Future<void> _startNewConversation() async {
+    if (_messages.length == 1) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Start a new conversation?'),
+        content: const Text(
+          'This conversation will be cleared from this screen.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('New chat'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() {
+      _messages
+        ..clear()
+        ..add(const _SamSamMessage(_welcomeMessage, fromSamSam: true));
     });
     _scrollToEnd();
   }
@@ -3659,14 +4349,16 @@ class _DavidScreenState extends ConsumerState<DavidScreen> {
     appBar: AppBar(
       title: Row(
         children: [
-          const _DavidAvatar(size: 40),
+          const _SamSamAvatar(size: 40),
           const SizedBox(width: 10),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('David'),
+              const Text('Sam-Sam'),
               Text(
-                'David • ${_onlineAvailable ? 'Online' : 'Offline'}',
+                _online.configured
+                    ? 'Online AI when connected'
+                    : 'Offline guide · online AI not configured',
                 style: const TextStyle(fontSize: 12),
               ),
             ],
@@ -3674,6 +4366,11 @@ class _DavidScreenState extends ConsumerState<DavidScreen> {
         ],
       ),
       actions: [
+        IconButton(
+          tooltip: 'New conversation',
+          onPressed: _thinking ? null : _startNewConversation,
+          icon: const Icon(Icons.add_comment_outlined),
+        ),
         PopupMenuButton<String>(
           tooltip: 'Response language',
           initialValue: _language,
@@ -3703,11 +4400,11 @@ class _DavidScreenState extends ConsumerState<DavidScreen> {
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        _DavidAvatar(size: 40),
+                        _SamSamAvatar(size: 40),
                         SizedBox(width: 10),
                         Expanded(
                           child: Text(
-                            'David is looking through Scripture…',
+                            'Sam-Sam is looking through Scripture…',
                             style: TextStyle(fontStyle: FontStyle.italic),
                           ),
                         ),
@@ -3721,7 +4418,7 @@ class _DavidScreenState extends ConsumerState<DavidScreen> {
                   );
                 }
                 final message = _messages[index];
-                return _DavidBubble(message: message);
+                return _SamSamBubble(message: message);
               },
             ),
           ),
@@ -3751,7 +4448,7 @@ class _DavidScreenState extends ConsumerState<DavidScreen> {
               textInputAction: TextInputAction.send,
               onSubmitted: (_) => _ask(),
               decoration: InputDecoration(
-                hintText: 'Ask David about the Bible…',
+                hintText: 'Ask Sam-Sam about the Bible…',
                 prefixIcon: const Icon(Icons.auto_awesome_rounded),
                 suffixIcon: IconButton(
                   tooltip: 'Send',
@@ -3767,19 +4464,19 @@ class _DavidScreenState extends ConsumerState<DavidScreen> {
   );
 }
 
-class _DavidBubble extends ConsumerWidget {
-  const _DavidBubble({required this.message});
-  final _DavidMessage message;
+class _SamSamBubble extends ConsumerWidget {
+  const _SamSamBubble({required this.message});
+  final _SamSamMessage message;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => Row(
-    mainAxisAlignment: message.fromDavid
+    mainAxisAlignment: message.fromSamSam
         ? MainAxisAlignment.start
         : MainAxisAlignment.end,
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      if (message.fromDavid) ...[
-        const _DavidAvatar(size: 40),
+      if (message.fromSamSam) ...[
+        const _SamSamAvatar(size: 40),
         const SizedBox(width: 10),
       ],
       Flexible(
@@ -3788,7 +4485,7 @@ class _DavidBubble extends ConsumerWidget {
           margin: const EdgeInsets.only(bottom: 12),
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: message.fromDavid
+            color: message.fromSamSam
                 ? Theme.of(context).colorScheme.surfaceContainerHighest
                 : Theme.of(context).colorScheme.primaryContainer,
             borderRadius: BorderRadius.circular(18),
@@ -3797,11 +4494,11 @@ class _DavidBubble extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(message.text),
-              if (message.fromDavid) ...[
+              if (message.fromSamSam) ...[
                 const SizedBox(height: 8),
                 Text(
                   message.online
-                      ? 'ONLINE • Gemini'
+                      ? 'ONLINE • OpenRouter'
                       : 'OFFLINE • Local Scripture',
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
                     color: Theme.of(context).colorScheme.primary,
@@ -3848,28 +4545,14 @@ class _DavidBubble extends ConsumerWidget {
   );
 }
 
-class _DavidAvatar extends StatelessWidget {
-  const _DavidAvatar({required this.size});
+class _SamSamAvatar extends StatelessWidget {
+  const _SamSamAvatar({required this.size});
   final double size;
 
   @override
-  Widget build(BuildContext context) => Semantics(
-    label: 'David, offline Bible guide',
-    image: true,
-    child: Container(
-      width: size,
-      height: size,
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(color: AppTheme.gold, width: 1.5),
-      ),
-      child: Image.asset(
-        'assets/images/david_pixel_avatar.png',
-        fit: BoxFit.cover,
-        filterQuality: FilterQuality.none,
-      ),
-    ),
+  Widget build(BuildContext context) => SamSamAnimatedCharacter(
+    height: size,
+    semanticsLabel: 'Sam-Sam, Bible companion',
   );
 }
 
@@ -4036,16 +4719,25 @@ class _BookmarksScreenState extends ConsumerState<BookmarksScreen> {
               setState(() => showHighlights = value.first),
         ),
         const SizedBox(height: 14),
-        if (!showHighlights)
-          TextField(
-            controller: searchController,
-            onChanged: (_) => setState(() {}),
-            decoration: const InputDecoration(
-              prefixIcon: Icon(Icons.search),
-              hintText: 'Search bookmarks',
-            ),
+        TextField(
+          controller: searchController,
+          onChanged: (_) => setState(() {}),
+          decoration: InputDecoration(
+            prefixIcon: const Icon(Icons.search_rounded),
+            hintText: 'Search saved verses and sermon notes',
+            suffixIcon: searchController.text.isEmpty
+                ? null
+                : IconButton(
+                    tooltip: 'Clear search',
+                    onPressed: () {
+                      searchController.clear();
+                      setState(() {});
+                    },
+                    icon: const Icon(Icons.close_rounded),
+                  ),
           ),
-        const SizedBox(height: 12),
+        ),
+        const SizedBox(height: 16),
         if (showHighlights) _highlightList(context) else _bookmarkList(context),
       ],
     ),
@@ -4056,7 +4748,7 @@ class _BookmarksScreenState extends ConsumerState<BookmarksScreen> {
         .read(bibleRepositoryProvider)
         .bookmarks(query: searchController.text),
     builder: (c, s) {
-      final items = s.data ?? <BibleVerse>[];
+      final items = s.data ?? <SavedVerse>[];
       if (s.connectionState != ConnectionState.done) {
         return const Center(child: CircularProgressIndicator());
       }
@@ -4069,14 +4761,28 @@ class _BookmarksScreenState extends ConsumerState<BookmarksScreen> {
       }
       return Column(
         children: [
-          for (final verse in items)
+          for (final saved in items)
             Dismissible(
-              key: ValueKey('bookmark-${verse.id}'),
+              key: ValueKey('bookmark-${saved.id}'),
               direction: DismissDirection.endToStart,
               background: _deleteBackground(c),
-              onDismissed: (_) =>
-                  ref.read(bibleRepositoryProvider).toggleBookmark(verse.id),
-              child: _verseTile(c, verse),
+              onDismissed: (_) => ref
+                  .read(bibleRepositoryProvider)
+                  .removeBookmark(saved.verse.id),
+              child: _verseTile(
+                c,
+                saved.verse,
+                sermonTitle: saved.sermonTitle,
+                sermonNote: saved.sermonNote,
+                onManage: () =>
+                    _manageSermonDetails(c, saved, isHighlight: false),
+                onRemove: () async {
+                  await ref
+                      .read(bibleRepositoryProvider)
+                      .removeBookmark(saved.verse.id);
+                  if (mounted) setState(() {});
+                },
+              ),
             ),
         ],
       );
@@ -4084,17 +4790,22 @@ class _BookmarksScreenState extends ConsumerState<BookmarksScreen> {
   );
 
   Widget _highlightList(BuildContext context) => FutureBuilder(
-    future: ref.read(bibleRepositoryProvider).highlights(),
+    future: ref
+        .read(bibleRepositoryProvider)
+        .highlights(query: searchController.text),
     builder: (c, s) {
       final items = s.data ?? <SavedVerse>[];
       if (s.connectionState != ConnectionState.done) {
         return const Center(child: CircularProgressIndicator());
       }
       if (items.isEmpty) {
-        return const _Empty(
+        final hasSearch = searchController.text.trim().isNotEmpty;
+        return _Empty(
           icon: Icons.highlight,
-          title: 'No highlights yet',
-          message: 'Select verses in the reader and choose a highlight color.',
+          title: hasSearch ? 'No matching highlights' : 'No highlights yet',
+          message: hasSearch
+              ? 'Try another search or clear it to see all your highlights.'
+              : 'Select verses in the reader and choose a highlight color.',
         );
       }
       return Column(
@@ -4116,7 +4827,20 @@ class _BookmarksScreenState extends ConsumerState<BookmarksScreen> {
                     ),
                   ),
                 ),
-                child: _verseTile(c, saved.verse),
+                child: _verseTile(
+                  c,
+                  saved.verse,
+                  sermonTitle: saved.sermonTitle,
+                  sermonNote: saved.sermonNote,
+                  onManage: () =>
+                      _manageSermonDetails(c, saved, isHighlight: true),
+                  onRemove: () async {
+                    await ref
+                        .read(bibleRepositoryProvider)
+                        .setHighlight(saved.verse.id, null);
+                    if (mounted) setState(() {});
+                  },
+                ),
               ),
             ),
         ],
@@ -4131,17 +4855,140 @@ class _BookmarksScreenState extends ConsumerState<BookmarksScreen> {
     child: const Icon(Icons.delete),
   );
 
-  Widget _verseTile(BuildContext context, BibleVerse verse) => ListTile(
-    title: Text('${verse.reference} · ${verse.versionAbbreviation}'),
-    subtitle: Text(verse.text, maxLines: 3, overflow: TextOverflow.ellipsis),
-    onTap: () => openReader(
-      context,
-      ref,
-      verse.bookId,
-      verse.chapter,
-      focusVerse: verse.number,
-    ),
-  );
+  Future<void> _manageSermonDetails(
+    BuildContext context,
+    SavedVerse saved, {
+    required bool isHighlight,
+  }) async {
+    final titleController = TextEditingController(
+      text: saved.sermonTitle ?? '',
+    );
+    final noteController = TextEditingController(text: saved.sermonNote ?? '');
+    try {
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text('Sermon details · ${saved.verse.reference}'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: titleController,
+                  textCapitalization: TextCapitalization.sentences,
+                  decoration: const InputDecoration(
+                    labelText: 'Sermon title or topic',
+                    hintText: 'e.g. Hope in difficult times',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: noteController,
+                  textCapitalization: TextCapitalization.sentences,
+                  minLines: 3,
+                  maxLines: 6,
+                  decoration: const InputDecoration(
+                    labelText: 'Preparation note',
+                    hintText: 'Add a reminder for your sermon…',
+                    alignLabelWithHint: true,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                await ref
+                    .read(bibleRepositoryProvider)
+                    .updateSermonDetails(
+                      verseId: saved.verse.id,
+                      isHighlight: isHighlight,
+                      title: titleController.text,
+                      note: noteController.text,
+                    );
+                if (dialogContext.mounted) Navigator.pop(dialogContext);
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      titleController.dispose();
+      noteController.dispose();
+    }
+    if (mounted) setState(() {});
+  }
+
+  Widget _verseTile(
+    BuildContext context,
+    BibleVerse verse, {
+    String? sermonTitle,
+    String? sermonNote,
+    required VoidCallback onManage,
+    required VoidCallback onRemove,
+  }) {
+    final hasSermonDetails =
+        (sermonTitle?.isNotEmpty ?? false) || (sermonNote?.isNotEmpty ?? false);
+    return ListTile(
+      title: Text('${verse.reference} · ${verse.versionAbbreviation}'),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(verse.text, maxLines: 3, overflow: TextOverflow.ellipsis),
+          if (hasSermonDetails) ...[
+            const SizedBox(height: 8),
+            if (sermonTitle?.isNotEmpty ?? false)
+              Text(
+                sermonTitle!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  color: Theme.of(context).colorScheme.primary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            if (sermonNote?.isNotEmpty ?? false)
+              Text(
+                sermonNote!,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+          ],
+        ],
+      ),
+      onTap: () => openReader(
+        context,
+        ref,
+        verse.bookId,
+        verse.chapter,
+        focusVerse: verse.number,
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            tooltip: 'Manage sermon details',
+            onPressed: onManage,
+            icon: const Icon(Icons.edit_note_rounded),
+          ),
+          IconButton(
+            tooltip: 'Remove from saved verses',
+            onPressed: onRemove,
+            icon: const Icon(Icons.delete_outline_rounded),
+            color: Theme.of(context).colorScheme.error,
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class NotesScreen extends ConsumerStatefulWidget {
@@ -4161,21 +5008,34 @@ class _NotesScreenState extends ConsumerState<NotesScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => PageFrame(
-    title: 'Notes',
-    child: Column(
-      children: [
-        TextField(
-          controller: searchController,
-          onChanged: (_) => setState(() {}),
-          decoration: const InputDecoration(
-            prefixIcon: Icon(Icons.search),
-            hintText: 'Search notes',
+  Widget build(BuildContext context) => Scaffold(
+    body: PageFrame(
+      title: 'Notes',
+      bottomPadding: 24,
+      child: Column(
+        children: [
+          TextField(
+            controller: searchController,
+            onChanged: (_) => setState(() {}),
+            decoration: InputDecoration(
+              prefixIcon: const Icon(Icons.search_rounded),
+              hintText: 'Search your notes',
+              suffixIcon: searchController.text.isEmpty
+                  ? null
+                  : IconButton(
+                      tooltip: 'Clear search',
+                      onPressed: () {
+                        searchController.clear();
+                        setState(() {});
+                      },
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+            ),
           ),
-        ),
-        const SizedBox(height: 12),
-        _notesList(),
-      ],
+          const SizedBox(height: 20),
+          _notesList(),
+        ],
+      ),
     ),
   );
 
@@ -4185,14 +5045,41 @@ class _NotesScreenState extends ConsumerState<NotesScreen> {
         .notes(query: searchController.text),
     builder: (c, s) {
       if (s.connectionState != ConnectionState.done) {
-        return const Center(child: CircularProgressIndicator());
+        return const SizedBox(
+          height: 140,
+          child: Center(child: CircularProgressIndicator()),
+        );
+      }
+      if (s.hasError) {
+        return _NotesEmptyState(
+          icon: Icons.error_outline_rounded,
+          title: 'Notes couldn’t load',
+          message: 'Please try again.',
+          action: TextButton.icon(
+            onPressed: () => setState(() {}),
+            icon: const Icon(Icons.refresh_rounded),
+            label: const Text('Retry'),
+          ),
+        );
       }
       final items = s.data ?? [];
       if (items.isEmpty) {
-        return const _Empty(
-          icon: Icons.edit_note,
-          title: 'No notes yet',
-          message: 'Select a verse and add a personal reflection.',
+        final hasSearch = searchController.text.trim().isNotEmpty;
+        return _NotesEmptyState(
+          icon: hasSearch ? Icons.search_off_rounded : Icons.edit_note_rounded,
+          title: hasSearch ? 'No matching notes' : 'No notes yet',
+          message: hasSearch
+              ? 'Try a different word or clear your search.'
+              : 'Save a reflection from any verse and it will appear here.',
+          action: hasSearch
+              ? TextButton(
+                  onPressed: () {
+                    searchController.clear();
+                    setState(() {});
+                  },
+                  child: const Text('Clear search'),
+                )
+              : null,
         );
       }
       return Column(
@@ -4207,37 +5094,82 @@ class _NotesScreenState extends ConsumerState<NotesScreen> {
                 n.verse.chapter,
                 focusVerse: n.verse.number,
               ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
+                  Row(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: Theme.of(
+                            c,
+                          ).colorScheme.primaryContainer.withValues(alpha: .7),
+                          borderRadius: BorderRadius.circular(13),
+                        ),
+                        child: Icon(
+                          Icons.menu_book_rounded,
+                          color: Theme.of(c).colorScheme.primary,
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
                           n.verse.reference,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.gold,
+                          style: Theme.of(c).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: Theme.of(c).colorScheme.primary,
                           ),
                         ),
-                        const SizedBox(height: 8),
-                        Text(n.content ?? ''),
-                      ],
+                      ),
+                      IconButton.filledTonal(
+                        tooltip: 'Edit note',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => _editNote(c, n),
+                        icon: const Icon(Icons.edit_outlined, size: 19),
+                      ),
+                      const SizedBox(width: 4),
+                      IconButton.filledTonal(
+                        tooltip: 'Delete note',
+                        visualDensity: VisualDensity.compact,
+                        style: IconButton.styleFrom(
+                          foregroundColor: Theme.of(c).colorScheme.error,
+                          backgroundColor: Theme.of(
+                            c,
+                          ).colorScheme.errorContainer,
+                        ),
+                        onPressed: () async {
+                          await ref
+                              .read(bibleRepositoryProvider)
+                              .deleteNote(n.id);
+                          if (mounted) setState(() {});
+                        },
+                        icon: const Icon(
+                          Icons.delete_outline_rounded,
+                          size: 19,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Theme.of(
+                        c,
+                      ).colorScheme.surface.withValues(alpha: .72),
+                      borderRadius: BorderRadius.circular(16),
                     ),
-                  ),
-                  IconButton(
-                    tooltip: 'Edit note',
-                    onPressed: () => _editNote(c, n),
-                    icon: const Icon(Icons.edit_outlined),
-                  ),
-                  IconButton(
-                    tooltip: 'Delete note',
-                    onPressed: () async {
-                      await ref.read(bibleRepositoryProvider).deleteNote(n.id);
-                      setState(() {});
-                    },
-                    icon: const Icon(Icons.delete_outline),
+                    child: Text(
+                      n.content ?? '',
+                      style: Theme.of(c).textTheme.bodyLarge?.copyWith(
+                        height: 1.5,
+                        color: Theme.of(c).colorScheme.onSurface,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -4283,6 +5215,47 @@ class _NotesScreenState extends ConsumerState<NotesScreen> {
     );
     controller.dispose();
     if (mounted) setState(() {});
+  }
+}
+
+class _NotesEmptyState extends StatelessWidget {
+  const _NotesEmptyState({
+    required this.icon,
+    required this.title,
+    required this.message,
+    this.action,
+  });
+
+  final IconData icon;
+  final String title;
+  final String message;
+  final Widget? action;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return GlassCard(
+      child: SizedBox(
+        width: double.infinity,
+        child: Column(
+          children: [
+            Icon(icon, size: 34, color: theme.colorScheme.primary),
+            const SizedBox(height: 12),
+            Text(title, style: theme.textTheme.titleMedium),
+            const SizedBox(height: 6),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                height: 1.4,
+              ),
+            ),
+            if (action != null) ...[const SizedBox(height: 8), action!],
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -4394,14 +5367,27 @@ class _BibleQuizScreenState extends ConsumerState<BibleQuizScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('Question ${current + 1} of ${questions.length}'),
-            Text('Score $score', style: const TextStyle(color: AppTheme.gold)),
+            _QuizStatChip(
+              icon: Icons.help_outline_rounded,
+              label: 'Question ${current + 1} of ${questions.length}',
+            ),
+            const Spacer(),
+            _QuizStatChip(
+              icon: Icons.stars_rounded,
+              label: '$score points',
+              accent: true,
+            ),
           ],
         ),
-        const SizedBox(height: 10),
-        LinearProgressIndicator(value: (current + 1) / questions.length),
+        const SizedBox(height: 12),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(99),
+          child: LinearProgressIndicator(
+            minHeight: 8,
+            value: (current + 1) / questions.length,
+          ),
+        ),
         const SizedBox(height: 24),
         GlassCard(
           child: Column(
@@ -4434,24 +5420,36 @@ class _BibleQuizScreenState extends ConsumerState<BibleQuizScreen> {
             ),
           ),
         if (selected != null) ...[
-          const SizedBox(height: 8),
-          Text(
-            selected == question.answer
-                ? 'Correct!'
-                : 'The correct answer is ${question.answer}.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: selected == question.answer
-                  ? Colors.green
-                  : Theme.of(context).colorScheme.error,
-              fontWeight: FontWeight.bold,
+          const SizedBox(height: 6),
+          GlassCard(
+            child: Row(
+              children: [
+                Icon(
+                  selected == question.answer
+                      ? Icons.check_circle_rounded
+                      : Icons.menu_book_rounded,
+                  color: selected == question.answer
+                      ? Colors.green
+                      : Theme.of(context).colorScheme.error,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        selected == question.answer
+                            ? 'That’s right!'
+                            : 'The answer is ${question.answer}.',
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(question.reference),
+                    ],
+                  ),
+                ),
+              ],
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            question.reference,
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodySmall,
           ),
           const SizedBox(height: 16),
           FilledButton(
@@ -4469,15 +5467,44 @@ class _BibleQuizScreenState extends ConsumerState<BibleQuizScreen> {
   Widget _difficultyPicker(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      Text(
-        'Choose your challenge',
-        style: Theme.of(context).textTheme.headlineSmall,
+      GlassCard(
+        child: Row(
+          children: [
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: AppTheme.gold.withValues(alpha: .18),
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: const Icon(
+                Icons.auto_awesome_rounded,
+                color: AppTheme.gold,
+                size: 30,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Choose your challenge',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Build your Scripture knowledge at your own pace. Every round works offline.',
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
-      const SizedBox(height: 8),
-      const Text(
-        'Every round is generated randomly from your default offline Bible version.',
-      ),
-      const SizedBox(height: 24),
+      const SizedBox(height: 16),
       _DifficultyCard(
         title: 'Easy',
         subtitle: 'Identify the Bible book from a verse.',
@@ -4560,7 +5587,15 @@ class _DifficultyCard extends StatelessWidget {
       onTap: onTap,
       child: Row(
         children: [
-          Icon(icon, size: 36, color: AppTheme.gold),
+          Container(
+            width: 50,
+            height: 50,
+            decoration: BoxDecoration(
+              color: AppTheme.gold.withValues(alpha: .16),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Icon(icon, size: 26, color: AppTheme.gold),
+          ),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
@@ -4576,6 +5611,40 @@ class _DifficultyCard extends StatelessWidget {
       ),
     ),
   );
+}
+
+class _QuizStatChip extends StatelessWidget {
+  const _QuizStatChip({
+    required this.icon,
+    required this.label,
+    this.accent = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = accent
+        ? AppTheme.gold
+        : Theme.of(context).colorScheme.primary;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: .12),
+        borderRadius: BorderRadius.circular(99),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 17, color: color),
+          const SizedBox(width: 6),
+          Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
+        ],
+      ),
+    );
+  }
 }
 
 class _QuizOption extends StatelessWidget {
@@ -4729,6 +5798,88 @@ class SettingsScreen extends ConsumerWidget {
             value: s.rememberLastLight,
             onChanged: (v) => notifier.update(s.copyWith(rememberLastLight: v)),
           ),
+          const _Section('Sam-Sam'),
+          SwitchListTile(
+            secondary: const Icon(Icons.smart_toy_outlined),
+            title: const Text('Show Sam-Sam companion'),
+            subtitle: const Text('Show the companion when Veralume opens'),
+            value: s.samSamEnabled,
+            onChanged: (enabled) =>
+                notifier.update(s.copyWith(samSamEnabled: enabled)),
+          ),
+          ListTile(
+            title: Text('Sam-Sam size · ${(s.samSamScale * 100).round()}%'),
+            subtitle: Slider(
+              value: s.samSamScale,
+              min: .25,
+              max: 1.35,
+              divisions: 20,
+              label: '${(s.samSamScale * 100).round()}%',
+              onChanged: (scale) =>
+                  notifier.update(s.copyWith(samSamScale: scale)),
+            ),
+          ),
+          const _Section('Reminders'),
+          SwitchListTile(
+            secondary: const Icon(Icons.notifications_active_outlined),
+            title: const Text('Today’s Word reminder'),
+            subtitle: const Text('Show today’s verse every morning at 8:00 AM'),
+            value: s.dailyWordReminder,
+            onChanged: (enabled) async {
+              if (!enabled) {
+                await notifier.update(s.copyWith(dailyWordReminder: false));
+                try {
+                  await DailyWordNotificationService.instance
+                      .cancelDailyWords();
+                } catch (error) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Could not cancel reminders: $error'),
+                      ),
+                    );
+                  }
+                }
+                return;
+              }
+              try {
+                final granted = await DailyWordNotificationService.instance
+                    .requestPermission();
+                if (!granted) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Allow notifications in your device settings to enable this reminder.',
+                        ),
+                      ),
+                    );
+                  }
+                  return;
+                }
+                await notifier.update(s.copyWith(dailyWordReminder: true));
+                await DailyWordNotificationService.instance.scheduleDailyWords(
+                  repository: ref.read(bibleRepositoryProvider),
+                  versionId: s.defaultVersionId,
+                );
+              } catch (error) {
+                await notifier.update(s.copyWith(dailyWordReminder: false));
+                try {
+                  await DailyWordNotificationService.instance
+                      .cancelDailyWords();
+                } catch (cancelError) {
+                  debugPrint('Could not cancel failed reminders: $cancelError');
+                }
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Could not enable reminder: $error'),
+                    ),
+                  );
+                }
+              }
+            },
+          ),
           const _Section('Bible'),
           FutureBuilder(
             future: ref.read(bibleRepositoryProvider).versions(),
@@ -4798,6 +5949,15 @@ class SettingsScreen extends ConsumerWidget {
             ),
           ),
           ListTile(
+            leading: const Icon(Icons.menu_book_rounded),
+            title: const Text('Prayer Journal'),
+            subtitle: const Text('Personal prayers saved on this device'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const PrayerJournalScreen()),
+            ),
+          ),
+          ListTile(
             leading: const Icon(Icons.history),
             title: const Text('Clear reading history'),
             onTap: () => showDialog(
@@ -4830,7 +5990,7 @@ class SettingsScreen extends ConsumerWidget {
               color: AppTheme.gold,
             ),
             title: const Text('What’s New'),
-            subtitle: const Text('Veralume 1.5.1 • Radiant'),
+            subtitle: const Text('Veralume 1.5.4 • Faith Over Fear'),
             trailing: const Icon(Icons.chevron_right_rounded),
             onTap: () => Navigator.of(
               context,
@@ -4841,8 +6001,7 @@ class SettingsScreen extends ConsumerWidget {
             title: Text('Veralume'),
             subtitle: Text(
               'Truth · Light · Scripture\n'
-              'Your Word. Your Light. Everywhere.\n'
-              'Version 1.5.1 • Radiant\n'
+              'Version 1.5.4 • Faith Over Fear\n'
               'ArkByte Technologies',
             ),
           ),
@@ -4880,44 +6039,89 @@ class _ThemeSelector extends StatelessWidget {
   const _ThemeSelector({required this.selected, required this.onSelected});
   final VeralumeTheme selected;
   final ValueChanged<VeralumeTheme> onSelected;
+
   @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, constraints) => GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: constraints.maxWidth > 560 ? 3 : 2,
-        childAspectRatio: 1.35,
-        crossAxisSpacing: 10,
-        mainAxisSpacing: 10,
+  Widget build(BuildContext context) {
+    final palette = AppTheme.palettes[selected]!;
+    return ListTile(
+      leading: Icon(Icons.palette_outlined, color: palette.primary),
+      title: const Text('Color theme'),
+      subtitle: Text(selected.label),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final color in [
+            palette.primary,
+            palette.secondary,
+            palette.accent,
+          ])
+            Container(
+              width: 18,
+              height: 18,
+              margin: const EdgeInsets.only(left: 4),
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            ),
+          const SizedBox(width: 6),
+          const Icon(Icons.expand_more_rounded),
+        ],
       ),
-      itemCount: VeralumeTheme.values.length,
-      itemBuilder: (context, index) {
-        final theme = VeralumeTheme.values[index],
-            palette = AppTheme.palettes[VeralumeTheme.values[index]]!;
-        final active = theme == selected;
-        return Semantics(
-          selected: active,
-          button: true,
-          label: '${theme.label} theme',
-          child: InkWell(
-            borderRadius: BorderRadius.circular(18),
-            onTap: () => onSelected(theme),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: palette.background,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(
-                  color: active ? palette.primary : palette.border,
-                  width: active ? 2.5 : 1,
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+      onTap: () => showModalBottomSheet<void>(
+        context: context,
+        useSafeArea: true,
+        isScrollControlled: true,
+        showDragHandle: true,
+        builder: (sheetContext) => _ThemePickerSheet(
+          selected: selected,
+          onSelected: (theme) {
+            onSelected(theme);
+            Navigator.pop(sheetContext);
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _ThemePickerSheet extends StatelessWidget {
+  const _ThemePickerSheet({required this.selected, required this.onSelected});
+
+  final VeralumeTheme selected;
+  final ValueChanged<VeralumeTheme> onSelected;
+
+  @override
+  Widget build(BuildContext context) => ConstrainedBox(
+    constraints: BoxConstraints(
+      maxHeight: MediaQuery.sizeOf(context).height * .72,
+    ),
+    child: ListView(
+      shrinkWrap: true,
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 0, 8, 10),
+          child: Text(
+            'Choose a color theme',
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+        ),
+        for (final theme in VeralumeTheme.values)
+          Builder(
+            builder: (context) {
+              final palette = AppTheme.palettes[theme]!;
+              final active = theme == selected;
+              return Semantics(
+                selected: active,
+                button: true,
+                label: '${theme.label} theme',
+                child: ListTile(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  tileColor: active
+                      ? palette.primary.withValues(alpha: .10)
+                      : null,
+                  leading: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       for (final color in [
                         palette.primary,
@@ -4925,36 +6129,26 @@ class _ThemeSelector extends StatelessWidget {
                         palette.accent,
                       ])
                         Container(
-                          width: 22,
-                          height: 22,
+                          width: 20,
+                          height: 20,
                           margin: const EdgeInsets.only(right: 5),
                           decoration: BoxDecoration(
                             color: color,
                             shape: BoxShape.circle,
                           ),
                         ),
-                      const Spacer(),
-                      if (active)
-                        Icon(
-                          Icons.check_circle_rounded,
-                          color: palette.primary,
-                        ),
                     ],
                   ),
-                  const Spacer(),
-                  Text(
-                    theme.label,
-                    style: TextStyle(
-                      color: palette.text,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+                  title: Text(theme.label),
+                  trailing: active
+                      ? Icon(Icons.check_circle_rounded, color: palette.primary)
+                      : null,
+                  onTap: () => onSelected(theme),
+                ),
+              );
+            },
           ),
-        );
-      },
+      ],
     ),
   );
 }
@@ -4967,94 +6161,111 @@ class RadiantFooter extends StatelessWidget {
     return Semantics(
       container: true,
       label:
-          'Veralume. Your Word. Your Light. Everywhere. Version 1.5.1 Radiant.',
-      child: Container(
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [p.footer, Color.lerp(p.footer, p.primary, .42)!],
-          ),
-          borderRadius: BorderRadius.circular(30),
-          border: Border.all(color: p.accent.withValues(alpha: .18)),
-          boxShadow: [
-            BoxShadow(
-              color: p.primary.withValues(alpha: .14),
-              blurRadius: 28,
-              offset: const Offset(0, 12),
-            ),
-          ],
-        ),
-        child: Stack(
-          children: [
-            Positioned(
-              right: -34,
-              top: -50,
-              child: ExcludeSemantics(
-                child: Container(
-                  width: 130,
-                  height: 130,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: p.accent.withValues(alpha: .08),
-                  ),
-                ),
+          'Veralume. Your Word. Your Light. Everywhere. Version 1.5.4 Faith Over Fear.',
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(30),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+          child: Container(
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  p.surface.withValues(alpha: .52),
+                  p.primary.withValues(alpha: .12),
+                  p.footer.withValues(alpha: .34),
+                ],
               ),
-            ),
-            Positioned(
-              left: 72,
-              bottom: -70,
-              child: ExcludeSemantics(
-                child: Container(
-                  width: 150,
-                  height: 110,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: p.primary.withValues(alpha: .18),
-                  ),
+              borderRadius: BorderRadius.circular(30),
+              border: Border.all(color: Colors.white.withValues(alpha: .32)),
+              boxShadow: [
+                BoxShadow(
+                  color: p.primary.withValues(alpha: .12),
+                  blurRadius: 28,
+                  offset: const Offset(0, 12),
                 ),
-              ),
+              ],
             ),
-            Padding(
-              padding: const EdgeInsets.all(22),
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final stacked =
-                      constraints.maxWidth < 430 ||
-                      MediaQuery.textScalerOf(context).scale(16) > 21;
-                  final brand = _FooterBrand(accent: p.accent);
-                  final details = Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    alignment: stacked
-                        ? WrapAlignment.start
-                        : WrapAlignment.end,
-                    children: const [
-                      _FooterPill(
-                        icon: Icons.offline_bolt_rounded,
-                        label: 'Offline-first',
+            child: Stack(
+              children: [
+                Positioned(
+                  right: -34,
+                  top: -50,
+                  child: ExcludeSemantics(
+                    child: Container(
+                      width: 130,
+                      height: 130,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: p.accent.withValues(alpha: .08),
                       ),
-                      _FooterPill(label: '1.5.1 • Radiant'),
-                    ],
-                  );
-                  if (stacked) {
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [brand, const SizedBox(height: 18), details],
-                    );
-                  }
-                  return Row(
-                    children: [
-                      Expanded(child: brand),
-                      const SizedBox(width: 20),
-                      Flexible(child: details),
-                    ],
-                  );
-                },
-              ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: 72,
+                  bottom: -70,
+                  child: ExcludeSemantics(
+                    child: Container(
+                      width: 150,
+                      height: 110,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: p.primary.withValues(alpha: .18),
+                      ),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(18),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final compact =
+                          constraints.maxWidth < 560 ||
+                          MediaQuery.textScalerOf(context).scale(16) > 21;
+                      final brand = _FooterBrand(
+                        accent: p.accent,
+                        compact: compact,
+                      );
+                      final details = Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        alignment: compact
+                            ? WrapAlignment.start
+                            : WrapAlignment.end,
+                        children: const [
+                          _FooterPill(
+                            icon: Icons.offline_bolt_rounded,
+                            label: 'Offline-first',
+                          ),
+                          _FooterPill(label: 'Version 1.5.4'),
+                        ],
+                      );
+                      if (compact) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            brand,
+                            const SizedBox(height: 18),
+                            details,
+                          ],
+                        );
+                      }
+                      return Row(
+                        children: [
+                          Expanded(child: brand),
+                          const SizedBox(width: 20),
+                          Flexible(child: details),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -5062,49 +6273,68 @@ class RadiantFooter extends StatelessWidget {
 }
 
 class _FooterBrand extends StatelessWidget {
-  const _FooterBrand({required this.accent});
+  const _FooterBrand({required this.accent, required this.compact});
   final Color accent;
-  @override
-  Widget build(BuildContext context) => Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      Container(
-        width: 52,
-        height: 52,
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: .1),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: Colors.white.withValues(alpha: .12)),
-        ),
-        child: Icon(Icons.auto_stories_rounded, color: accent, size: 28),
-      ),
-      const SizedBox(width: 14),
-      Flexible(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'VERALUME',
-              style: TextStyle(
-                color: accent,
-                fontSize: 17,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 2.8,
-              ),
-            ),
-            const SizedBox(height: 3),
-            Text(
-              'Your Word. Your Light. Everywhere.',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: .88),
-                height: 1.3,
-              ),
-            ),
-          ],
-        ),
-      ),
-    ],
+  final bool compact;
+
+  Widget get _logo => Container(
+    width: 52,
+    height: 52,
+    decoration: BoxDecoration(
+      color: Colors.white.withValues(alpha: .1),
+      borderRadius: BorderRadius.circular(18),
+      border: Border.all(color: Colors.white.withValues(alpha: .12)),
+    ),
+    child: Icon(Icons.auto_stories_rounded, color: accent, size: 28),
   );
+
+  Widget get _name => Text(
+    'VERALUME',
+    style: TextStyle(
+      color: accent,
+      fontSize: 17,
+      fontWeight: FontWeight.w900,
+      letterSpacing: 2.8,
+    ),
+  );
+
+  Widget get _tagline => Text(
+    'Your Word. Your Light. Everywhere.',
+    style: TextStyle(color: Colors.white.withValues(alpha: .88), height: 1.3),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    if (compact) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              _logo,
+              const SizedBox(width: 14),
+              Expanded(child: _name),
+            ],
+          ),
+          const SizedBox(height: 10),
+          _tagline,
+        ],
+      );
+    }
+
+    return Row(
+      children: [
+        _logo,
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [_name, const SizedBox(height: 3), _tagline],
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class _FooterPill extends StatelessWidget {
@@ -5126,12 +6356,17 @@ class _FooterPill extends StatelessWidget {
           Icon(icon, color: Colors.white.withValues(alpha: .75), size: 15),
           const SizedBox(width: 5),
         ],
-        Text(
-          label,
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: .78),
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
+        Flexible(
+          child: Text(
+            label,
+            maxLines: 2,
+            softWrap: true,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: .78),
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ),
       ],

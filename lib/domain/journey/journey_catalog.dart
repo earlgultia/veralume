@@ -4,58 +4,111 @@ const dailyLights = <DailyLight>[
   DailyLight(
     PassageReference(19, 119, startVerse: 105),
     'God’s Word may not reveal the whole road at once. It gives light for the faithful next step.',
+    practicalLesson:
+        'Choose one next step you can take with the light you have today.',
+    prayer:
+        'God, guide my next step through Your Word. Help me trust You with what I cannot yet see. Amen.',
   ),
   DailyLight(
     PassageReference(43, 8, startVerse: 12),
     'Following Jesus is an invitation to walk in light, even when the way ahead feels uncertain.',
+    practicalLesson: 'Bring one uncertain decision to Jesus before you act.',
+    prayer:
+        'Jesus, lead me in Your light today. Give me courage to follow You one step at a time. Amen.',
   ),
   DailyLight(
     PassageReference(20, 3, startVerse: 5, endVerse: 6),
     'Trust can begin before every question is answered. Bring God the path you cannot yet see.',
+    practicalLesson: 'Pause before one decision and ask God for wisdom.',
+    prayer:
+        'God, I place the path ahead in Your care. Teach me to trust You with all my heart. Amen.',
   ),
   DailyLight(
     PassageReference(19, 23, startVerse: 1, endVerse: 3),
     'Rest is part of the journey. The Shepherd leads with care, not hurry.',
+    practicalLesson:
+        'Make room for a few quiet minutes instead of rushing through every task.',
+    prayer:
+        'Shepherd of my soul, restore me and help me receive the rest I need. Amen.',
   ),
   DailyLight(
     PassageReference(23, 41, startVerse: 10),
     'Courage is not the absence of fear; it is remembering who remains with you.',
+    practicalLesson:
+        'Name one fear, then reach out to someone trustworthy as you face it.',
+    prayer:
+        'God, steady me when I feel afraid. Remind me that I do not have to face today alone. Amen.',
   ),
   DailyLight(
     PassageReference(50, 4, startVerse: 6, endVerse: 7),
     'Prayer makes room to place what you carry into God’s care and receive peace for today.',
+    practicalLesson:
+        'Turn one worry into a specific request, then take one calm breath.',
+    prayer:
+        'God, You know what I am carrying. I bring it to You and ask for Your peace today. Amen.',
   ),
   DailyLight(
     PassageReference(40, 11, startVerse: 28, endVerse: 30),
     'You do not need to carry every burden alone. Christ welcomes the weary with gentleness.',
+    practicalLesson:
+        'Share one burden with someone safe instead of carrying it by yourself.',
+    prayer:
+        'Jesus, meet me in my weariness. Help me accept Your gentle care and the support of others. Amen.',
   ),
   DailyLight(
     PassageReference(45, 8, startVerse: 28),
     'Even unfinished seasons can be held within God’s patient and purposeful care.',
+    practicalLesson:
+        'Look for one good thing you can do today, even while a larger problem remains unresolved.',
+    prayer:
+        'God, hold me through this unfinished season. Help me keep doing what is good. Amen.',
   ),
   DailyLight(
     PassageReference(25, 3, startVerse: 22, endVerse: 23),
     'Each morning is evidence that mercy has not run out. Today can begin again.',
+    practicalLesson:
+        'Begin again with one small act of patience toward yourself or another person.',
+    prayer:
+        'God, thank You for mercy that meets me again today. Help me offer that mercy to others. Amen.',
   ),
   DailyLight(
     PassageReference(58, 11, startVerse: 1),
     'Faith takes the next faithful step while hope learns to see beyond the visible.',
+    practicalLesson:
+        'Do one worthwhile thing today, even if you cannot yet see the outcome.',
+    prayer:
+        'God, strengthen my faith and keep my hope alive as I take the next step. Amen.',
   ),
   DailyLight(
     PassageReference(59, 1, startVerse: 5),
     'Wisdom begins with an honest request. You are invited to ask, listen, and keep walking.',
+    practicalLesson: 'Ask for advice before making one decision that matters.',
+    prayer:
+        'God, give me wisdom for today. Help me listen well and act with care. Amen.',
   ),
   DailyLight(
     PassageReference(62, 4, startVerse: 9, endVerse: 11),
     'God’s love is not merely an idea to understand; it becomes a way of living toward others.',
+    practicalLesson:
+        'Show practical care to one person through your words or actions today.',
+    prayer:
+        'God, thank You for loving me. Help me make that love visible to someone today. Amen.',
   ),
   DailyLight(
     PassageReference(51, 3, startVerse: 15),
     'Let Christ’s peace have a voice in your decisions, relationships, and pace today.',
+    practicalLesson:
+        'Before responding in a tense moment, pause and choose words that make peace.',
+    prayer:
+        'Christ, let Your peace guide my thoughts, words, and choices today. Amen.',
   ),
   DailyLight(
     PassageReference(19, 46, startVerse: 1),
     'A refuge is not a denial of trouble. It is a secure place from which to face it.',
+    practicalLesson:
+        'When trouble feels large, ask for help and focus on the next manageable step.',
+    prayer:
+        'God, be my refuge in trouble. Give me strength for the next step and courage to seek help. Amen.',
   ),
 ];
 

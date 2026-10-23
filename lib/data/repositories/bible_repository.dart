@@ -208,10 +208,20 @@ class BibleRepository {
       filters.add('v.book_id=?');
       args.add(bookId);
     }
-    return (await (await _db).rawQuery(
-      '$_select JOIN verses_fts ON verses_fts.rowid=v.id WHERE ${filters.join(' AND ')} ORDER BY bm25(verses_fts) LIMIT 200',
-      args,
-    )).map(BibleVerse.fromMap).toList();
+    try {
+      return (await (await _db).rawQuery(
+        '$_select JOIN verses_fts ON verses_fts.rowid=v.id WHERE ${filters.join(' AND ')} ORDER BY bm25(verses_fts) LIMIT 200',
+        args,
+      )).map(BibleVerse.fromMap).toList();
+    } on DatabaseException catch (error) {
+      if (!_isFts5Unavailable(error)) rethrow;
+      return _searchWithoutFts(
+        [term],
+        versionId: versionId,
+        bookId: bookId,
+        limit: 200,
+      );
+    }
   }
 
   Future<List<BibleVerse>> searchAnyTerms(
@@ -227,9 +237,45 @@ class BibleRepository {
         .toList();
     if (cleanTerms.isEmpty) return [];
     final match = cleanTerms.map((term) => '"$term"').join(' OR ');
+    try {
+      return (await (await _db).rawQuery(
+        '$_select JOIN verses_fts ON verses_fts.rowid=v.id WHERE verses_fts MATCH ? AND v.version_id=? ORDER BY bm25(verses_fts) LIMIT ?',
+        [match, versionId, limit],
+      )).map(BibleVerse.fromMap).toList();
+    } on DatabaseException catch (error) {
+      if (!_isFts5Unavailable(error)) rethrow;
+      return _searchWithoutFts(cleanTerms, versionId: versionId, limit: limit);
+    }
+  }
+
+  bool _isFts5Unavailable(DatabaseException error) => error
+      .toString()
+      .toLowerCase()
+      .replaceAll(' ', '')
+      .contains('nosuchmodule:fts5');
+
+  Future<List<BibleVerse>> _searchWithoutFts(
+    List<String> terms, {
+    int? versionId,
+    int? bookId,
+    required int limit,
+  }) async {
+    final clauses = <String>[];
+    final args = <Object?>[];
+    if (versionId != null) {
+      clauses.add('v.version_id=?');
+      args.add(versionId);
+    }
+    if (bookId != null) {
+      clauses.add('v.book_id=?');
+      args.add(bookId);
+    }
+    clauses.add('(${terms.map((_) => 'lower(v.text) LIKE ?').join(' OR ')})');
+    args.addAll(terms.map((term) => '%${term.toLowerCase()}%'));
+    args.add(limit);
     return (await (await _db).rawQuery(
-      '$_select JOIN verses_fts ON verses_fts.rowid=v.id WHERE verses_fts MATCH ? AND v.version_id=? ORDER BY bm25(verses_fts) LIMIT ?',
-      [match, versionId, limit],
+      '$_select WHERE ${clauses.join(' AND ')} ORDER BY v.book_id,v.chapter_number,v.verse_number LIMIT ?',
+      args,
     )).map(BibleVerse.fromMap).toList();
   }
 
@@ -249,47 +295,132 @@ class BibleRepository {
     );
   }
 
-  String _localDate(DateTime date) => '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+  String _localDate(DateTime date) =>
+      '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
 
-  Future<LivingWordSession> beginLivingWord(DateTime date, int versionId) async {
+  Future<LivingWordSession> beginLivingWord(
+    DateTime date,
+    int versionId,
+  ) async {
     final db = await _db;
     final localDate = _localDate(date);
-    final existing = await db.rawQuery('SELECT s.id session_id,s.local_date,s.current_stage,s.read_completed,s.understand_completed,s.reflect_completed,s.remember_completed,s.apply_completed,s.pray_completed,s.completed_at,v.*,b.name book_name,bv.abbreviation version_abbreviation FROM living_word_sessions s JOIN verses v ON s.verse_id=v.id JOIN books b ON b.id=v.book_id JOIN bible_versions bv ON bv.id=v.version_id WHERE s.local_date=? AND v.version_id=? ORDER BY s.updated_at DESC LIMIT 1', [localDate, versionId]);
+    final existing = await db.rawQuery(
+      'SELECT s.id session_id,s.local_date,s.current_stage,s.read_completed,s.understand_completed,s.reflect_completed,s.remember_completed,s.apply_completed,s.pray_completed,s.completed_at,v.*,b.name book_name,bv.abbreviation version_abbreviation FROM living_word_sessions s JOIN verses v ON s.verse_id=v.id JOIN books b ON b.id=v.book_id JOIN bible_versions bv ON bv.id=v.version_id WHERE s.local_date=? AND v.version_id=? ORDER BY s.updated_at DESC LIMIT 1',
+      [localDate, versionId],
+    );
     if (existing.isNotEmpty) return _livingSession(existing.first);
     final verse = await dailyVerse(date, versionId: versionId);
     final now = DateTime.now().toUtc().toIso8601String();
-    final id = await db.insert('living_word_sessions', {'local_date': localDate, 'verse_id': verse.id, 'started_at': now, 'updated_at': now});
-    return LivingWordSession(id: id, localDate: localDate, verse: verse, currentStage: 0, completed: false, stages: List<bool>.filled(6, false));
+    final id = await db.insert('living_word_sessions', {
+      'local_date': localDate,
+      'verse_id': verse.id,
+      'started_at': now,
+      'updated_at': now,
+    });
+    return LivingWordSession(
+      id: id,
+      localDate: localDate,
+      verse: verse,
+      currentStage: 0,
+      completed: false,
+      stages: List<bool>.filled(6, false),
+    );
   }
 
   Future<LivingWordSession?> activeLivingWord() async {
-    final rows = await (await _db).rawQuery('SELECT s.id session_id,s.local_date,s.current_stage,s.read_completed,s.understand_completed,s.reflect_completed,s.remember_completed,s.apply_completed,s.pray_completed,s.completed_at,v.*,b.name book_name,bv.abbreviation version_abbreviation FROM living_word_sessions s JOIN verses v ON s.verse_id=v.id JOIN books b ON b.id=v.book_id JOIN bible_versions bv ON bv.id=v.version_id WHERE s.completed_at IS NULL ORDER BY s.updated_at DESC LIMIT 1');
+    final rows = await (await _db).rawQuery(
+      'SELECT s.id session_id,s.local_date,s.current_stage,s.read_completed,s.understand_completed,s.reflect_completed,s.remember_completed,s.apply_completed,s.pray_completed,s.completed_at,v.*,b.name book_name,bv.abbreviation version_abbreviation FROM living_word_sessions s JOIN verses v ON s.verse_id=v.id JOIN books b ON b.id=v.book_id JOIN bible_versions bv ON bv.id=v.version_id WHERE s.completed_at IS NULL ORDER BY s.updated_at DESC LIMIT 1',
+    );
     return rows.isEmpty ? null : _livingSession(rows.first);
   }
 
   Future<List<LivingWordSession>> livingWordHistory({bool? completed}) async {
-    final where = completed == null ? '' : 'WHERE s.completed_at IS ${completed ? 'NOT ' : ''}NULL';
-    final rows = await (await _db).rawQuery('SELECT s.id session_id,s.local_date,s.current_stage,s.read_completed,s.understand_completed,s.reflect_completed,s.remember_completed,s.apply_completed,s.pray_completed,s.completed_at,v.*,b.name book_name,bv.abbreviation version_abbreviation FROM living_word_sessions s JOIN verses v ON s.verse_id=v.id JOIN books b ON b.id=v.book_id JOIN bible_versions bv ON bv.id=v.version_id $where ORDER BY s.updated_at DESC');
+    final where = completed == null
+        ? ''
+        : 'WHERE s.completed_at IS ${completed ? 'NOT ' : ''}NULL';
+    final rows = await (await _db).rawQuery(
+      'SELECT s.id session_id,s.local_date,s.current_stage,s.read_completed,s.understand_completed,s.reflect_completed,s.remember_completed,s.apply_completed,s.pray_completed,s.completed_at,v.*,b.name book_name,bv.abbreviation version_abbreviation FROM living_word_sessions s JOIN verses v ON s.verse_id=v.id JOIN books b ON b.id=v.book_id JOIN bible_versions bv ON bv.id=v.version_id $where ORDER BY s.updated_at DESC',
+    );
     return rows.map(_livingSession).toList();
   }
 
-  LivingWordSession _livingSession(Map<String, Object?> row) => LivingWordSession(
-    id: row['session_id'] as int, localDate: row['local_date'] as String, verse: BibleVerse.fromMap(row), currentStage: row['current_stage'] as int,
-    completed: row['completed_at'] != null,
-    stages: ['read_completed','understand_completed','reflect_completed','remember_completed','apply_completed','pray_completed'].map((key) => (row[key] as int? ?? 0) == 1).toList(),
+  LivingWordSession _livingSession(Map<String, Object?> row) =>
+      LivingWordSession(
+        id: row['session_id'] as int,
+        localDate: row['local_date'] as String,
+        verse: BibleVerse.fromMap(row),
+        currentStage: row['current_stage'] as int,
+        completed: row['completed_at'] != null,
+        stages: [
+          'read_completed',
+          'understand_completed',
+          'reflect_completed',
+          'remember_completed',
+          'apply_completed',
+          'pray_completed',
+        ].map((key) => (row[key] as int? ?? 0) == 1).toList(),
+      );
+
+  Future<void> updateLivingWord(
+    int id, {
+    required int stage,
+    required List<bool> stages,
+    bool complete = false,
+  }) async => (await _db).update(
+    'living_word_sessions',
+    {
+      'current_stage': stage,
+      'read_completed': stages[0] ? 1 : 0,
+      'understand_completed': stages[1] ? 1 : 0,
+      'reflect_completed': stages[2] ? 1 : 0,
+      'remember_completed': stages[3] ? 1 : 0,
+      'apply_completed': stages[4] ? 1 : 0,
+      'pray_completed': stages[5] ? 1 : 0,
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+      if (complete) 'completed_at': DateTime.now().toUtc().toIso8601String(),
+    },
+    where: 'id=?',
+    whereArgs: [id],
   );
 
-  Future<void> updateLivingWord(int id, {required int stage, required List<bool> stages, bool complete = false}) async => (await _db).update('living_word_sessions', {
-    'current_stage': stage, 'read_completed': stages[0] ? 1 : 0, 'understand_completed': stages[1] ? 1 : 0, 'reflect_completed': stages[2] ? 1 : 0, 'remember_completed': stages[3] ? 1 : 0, 'apply_completed': stages[4] ? 1 : 0, 'pray_completed': stages[5] ? 1 : 0,
-    'updated_at': DateTime.now().toUtc().toIso8601String(), if (complete) 'completed_at': DateTime.now().toUtc().toIso8601String(),
-  }, where: 'id=?', whereArgs: [id]);
-
   Future<ApplicationEntry?> applicationForSession(int sessionId) async {
-    final rows = await (await _db).rawQuery('SELECT a.id application_id,a.content application_content,a.created_at application_created_at,v.*,b.name book_name,bv.abbreviation version_abbreviation FROM applications a JOIN verses v ON a.verse_id=v.id JOIN books b ON b.id=v.book_id JOIN bible_versions bv ON bv.id=v.version_id WHERE a.living_word_session_id=? ORDER BY a.updated_at DESC LIMIT 1', [sessionId]);
-    return rows.isEmpty ? null : ApplicationEntry(id: rows.first['application_id'] as int, verse: BibleVerse.fromMap(rows.first), content: rows.first['application_content'] as String, createdAt: DateTime.parse(rows.first['application_created_at'] as String));
+    final rows = await (await _db).rawQuery(
+      'SELECT a.id application_id,a.content application_content,a.created_at application_created_at,v.*,b.name book_name,bv.abbreviation version_abbreviation FROM applications a JOIN verses v ON a.verse_id=v.id JOIN books b ON b.id=v.book_id JOIN bible_versions bv ON bv.id=v.version_id WHERE a.living_word_session_id=? ORDER BY a.updated_at DESC LIMIT 1',
+      [sessionId],
+    );
+    return rows.isEmpty
+        ? null
+        : ApplicationEntry(
+            id: rows.first['application_id'] as int,
+            verse: BibleVerse.fromMap(rows.first),
+            content: rows.first['application_content'] as String,
+            createdAt: DateTime.parse(
+              rows.first['application_created_at'] as String,
+            ),
+          );
   }
-  Future<List<ApplicationEntry>> applications() async => (await (await _db).rawQuery('SELECT a.id application_id,a.content application_content,a.created_at application_created_at,v.*,b.name book_name,bv.abbreviation version_abbreviation FROM applications a JOIN verses v ON a.verse_id=v.id JOIN books b ON b.id=v.book_id JOIN bible_versions bv ON bv.id=v.version_id ORDER BY a.updated_at DESC')).map((row) => ApplicationEntry(id: row['application_id'] as int, verse: BibleVerse.fromMap(row), content: row['application_content'] as String, createdAt: DateTime.parse(row['application_created_at'] as String))).toList();
-  Future<void> saveApplication(int sessionId, int verseId, String content, {int? id}) async {
+
+  Future<List<ApplicationEntry>> applications() async =>
+      (await (await _db).rawQuery(
+            'SELECT a.id application_id,a.content application_content,a.created_at application_created_at,v.*,b.name book_name,bv.abbreviation version_abbreviation FROM applications a JOIN verses v ON a.verse_id=v.id JOIN books b ON b.id=v.book_id JOIN bible_versions bv ON bv.id=v.version_id ORDER BY a.updated_at DESC',
+          ))
+          .map(
+            (row) => ApplicationEntry(
+              id: row['application_id'] as int,
+              verse: BibleVerse.fromMap(row),
+              content: row['application_content'] as String,
+              createdAt: DateTime.parse(
+                row['application_created_at'] as String,
+              ),
+            ),
+          )
+          .toList();
+  Future<void> saveApplication(
+    int sessionId,
+    int verseId,
+    String content, {
+    int? id,
+  }) async {
     final now = DateTime.now().toUtc().toIso8601String();
     final db = await _db;
     if (id == null) {
@@ -460,14 +591,57 @@ class BibleRepository {
     whereArgs: [verseId],
     limit: 1,
   )).isNotEmpty;
-  Future<List<BibleVerse>> bookmarks({String query = ''}) async {
+  Future<void> removeBookmark(int verseId) async => (await _db).delete(
+    'bookmarks',
+    where: 'verse_id=?',
+    whereArgs: [verseId],
+  );
+  Future<List<SavedVerse>> bookmarks({String query = ''}) async {
     final term = query.trim();
-    final where = term.isEmpty ? '' : ' WHERE v.text LIKE ? OR b.name LIKE ?';
-    final args = term.isEmpty ? <Object?>[] : ['%$term%', '%$term%'];
-    return (await (await _db).rawQuery(
-      '$_select JOIN bookmarks x ON x.verse_id=v.id$where ORDER BY x.created_at DESC',
+    final where = term.isEmpty
+        ? ''
+        : ' WHERE v.text LIKE ? OR b.name LIKE ? OR x.sermon_title LIKE ? OR x.sermon_note LIKE ?';
+    final args = term.isEmpty
+        ? <Object?>[]
+        : ['%$term%', '%$term%', '%$term%', '%$term%'];
+    final rows = await (await _db).rawQuery(
+      '''SELECT x.id saved_id,x.sermon_title,x.sermon_note,x.created_at,v.*,
+         b.name book_name,bv.abbreviation version_abbreviation
+         FROM bookmarks x JOIN verses v ON v.id=x.verse_id
+         JOIN books b ON b.id=v.book_id
+         JOIN bible_versions bv ON bv.id=v.version_id$where
+         ORDER BY x.created_at DESC''',
       args,
-    )).map(BibleVerse.fromMap).toList();
+    );
+    return rows
+        .map(
+          (row) => SavedVerse(
+            id: row['saved_id'] as int,
+            verse: BibleVerse.fromMap(row),
+            sermonTitle: row['sermon_title'] as String?,
+            sermonNote: row['sermon_note'] as String?,
+            createdAt: DateTime.parse(row['created_at'] as String),
+          ),
+        )
+        .toList();
+  }
+
+  Future<void> updateSermonDetails({
+    required int verseId,
+    required bool isHighlight,
+    required String title,
+    required String note,
+  }) async {
+    final table = isHighlight ? 'highlights' : 'bookmarks';
+    await (await _db).update(
+      table,
+      {
+        'sermon_title': title.trim().isEmpty ? null : title.trim(),
+        'sermon_note': note.trim().isEmpty ? null : note.trim(),
+      },
+      where: 'verse_id=?',
+      whereArgs: [verseId],
+    );
   }
 
   Future<void> setHighlight(int verseId, String? color) async {
@@ -475,11 +649,20 @@ class BibleRepository {
     if (color == null) {
       await db.delete('highlights', where: 'verse_id=?', whereArgs: [verseId]);
     } else {
-      await db.insert('highlights', {
-        'verse_id': verseId,
-        'color': color,
-        'created_at': DateTime.now().toUtc().toIso8601String(),
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      final now = DateTime.now().toUtc().toIso8601String();
+      final updated = await db.update(
+        'highlights',
+        {'color': color, 'created_at': now},
+        where: 'verse_id=?',
+        whereArgs: [verseId],
+      );
+      if (updated == 0) {
+        await db.insert('highlights', {
+          'verse_id': verseId,
+          'color': color,
+          'created_at': now,
+        });
+      }
     }
   }
 
@@ -495,24 +678,40 @@ class BibleRepository {
             whereArgs: [verseId],
           );
         } else {
-          await txn.insert('highlights', {
-            'verse_id': verseId,
-            'color': color,
-            'created_at': now,
-          }, conflictAlgorithm: ConflictAlgorithm.replace);
+          final updated = await txn.update(
+            'highlights',
+            {'color': color, 'created_at': now},
+            where: 'verse_id=?',
+            whereArgs: [verseId],
+          );
+          if (updated == 0) {
+            await txn.insert('highlights', {
+              'verse_id': verseId,
+              'color': color,
+              'created_at': now,
+            });
+          }
         }
       }
     });
   }
 
-  Future<List<SavedVerse>> highlights() async {
+  Future<List<SavedVerse>> highlights({String query = ''}) async {
+    final term = query.trim();
+    final where = term.isEmpty
+        ? ''
+        : 'WHERE v.text LIKE ? OR b.name LIKE ? OR bv.abbreviation LIKE ? OR h.sermon_title LIKE ? OR h.sermon_note LIKE ?';
+    final args = term.isEmpty
+        ? <Object?>[]
+        : ['%$term%', '%$term%', '%$term%', '%$term%', '%$term%'];
     final rows = await (await _db).rawQuery(
-      '''SELECT h.id saved_id,h.color,h.created_at,v.*,
+      '''SELECT h.id saved_id,h.color,h.sermon_title,h.sermon_note,h.created_at,v.*,
          b.name book_name,bv.abbreviation version_abbreviation
          FROM highlights h JOIN verses v ON v.id=h.verse_id
          JOIN books b ON b.id=v.book_id
-         JOIN bible_versions bv ON bv.id=v.version_id
+         JOIN bible_versions bv ON bv.id=v.version_id $where
          ORDER BY h.created_at DESC''',
+      args,
     );
     return rows
         .map(
@@ -520,6 +719,8 @@ class BibleRepository {
             id: m['saved_id'] as int,
             verse: BibleVerse.fromMap(m),
             color: m['color'] as String,
+            sermonTitle: m['sermon_title'] as String?,
+            sermonNote: m['sermon_note'] as String?,
             createdAt: DateTime.parse(m['created_at'] as String),
           ),
         )
@@ -611,10 +812,19 @@ class BibleRepository {
   }
 
   Future<FocusEntry?> prayerForVerse(int verseId) async {
-    final rows = await (await _db).rawQuery('SELECT p.id entry_id,p.content,p.created_at,p.updated_at,v.*,b.name book_name,bv.abbreviation version_abbreviation FROM prayers p JOIN verses v ON v.id=p.verse_id JOIN books b ON b.id=v.book_id JOIN bible_versions bv ON bv.id=v.version_id WHERE p.verse_id=? ORDER BY p.updated_at DESC LIMIT 1', [verseId]);
+    final rows = await (await _db).rawQuery(
+      'SELECT p.id entry_id,p.content,p.created_at,p.updated_at,v.*,b.name book_name,bv.abbreviation version_abbreviation FROM prayers p JOIN verses v ON v.id=p.verse_id JOIN books b ON b.id=v.book_id JOIN bible_versions bv ON bv.id=v.version_id WHERE p.verse_id=? ORDER BY p.updated_at DESC LIMIT 1',
+      [verseId],
+    );
     if (rows.isEmpty) return null;
     final row = rows.first;
-    return FocusEntry(id: row['entry_id'] as int, verse: BibleVerse.fromMap(row), content: row['content'] as String, createdAt: DateTime.parse(row['created_at'] as String), updatedAt: DateTime.parse(row['updated_at'] as String));
+    return FocusEntry(
+      id: row['entry_id'] as int,
+      verse: BibleVerse.fromMap(row),
+      content: row['content'] as String,
+      createdAt: DateTime.parse(row['created_at'] as String),
+      updatedAt: DateTime.parse(row['updated_at'] as String),
+    );
   }
 
   Future<List<FocusEntry>> focusEntries(String table) async {

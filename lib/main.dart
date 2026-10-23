@@ -19,11 +19,7 @@ class VeralumeApp extends ConsumerWidget {
       title: 'Veralume',
       theme: AppTheme.forTheme(settings.theme),
       themeMode: ThemeMode.light,
-      home: !settings.loaded
-          ? const _SplashScreen()
-          : settings.onboarded
-          ? const AppShell()
-          : const OnboardingScreen(),
+      home: !settings.loaded ? const _SplashScreen() : const AppShell(),
     );
   }
 }

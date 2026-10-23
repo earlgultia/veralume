@@ -3,16 +3,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/repositories/bible_repository.dart';
 import '../../data/repositories/journey_repository.dart';
+import '../../data/repositories/faith_calendar_repository.dart';
 import '../../core/theme/app_theme.dart';
 
 final bibleRepositoryProvider = Provider((ref) => BibleRepository());
 final journeyRepositoryProvider = Provider((ref) => JourneyRepository());
+final faithCalendarRepositoryProvider = Provider(
+  (ref) => FaithCalendarRepository(),
+);
 
 class ReadingSettings {
   const ReadingSettings({
     this.theme = VeralumeTheme.royalPurple,
-    this.fontSize = 19,
-    this.lineHeight = 1.65,
+    this.fontSize = 20,
+    this.lineHeight = 1.7,
     this.serif = true,
     this.showVerseNumbers = true,
     this.readingWidth = 'normal',
@@ -24,6 +28,9 @@ class ReadingSettings {
     this.quietControls = 'tap',
     this.keepScreenAwake = false,
     this.rememberLastLight = true,
+    this.dailyWordReminder = false,
+    this.samSamEnabled = true,
+    this.samSamScale = .4,
     this.defaultVersionId = 1,
     this.loaded = false,
   });
@@ -37,7 +44,10 @@ class ReadingSettings {
       quietReading,
       keepScreenAwake,
       rememberLastLight,
+      dailyWordReminder,
+      samSamEnabled,
       loaded;
+  final double samSamScale;
   final String readingWidth, quietTone, quietControls;
   final int defaultVersionId;
   ReadingSettings copyWith({
@@ -55,6 +65,9 @@ class ReadingSettings {
     String? quietControls,
     bool? keepScreenAwake,
     bool? rememberLastLight,
+    bool? dailyWordReminder,
+    bool? samSamEnabled,
+    double? samSamScale,
     int? defaultVersionId,
     bool? loaded,
   }) => ReadingSettings(
@@ -72,6 +85,9 @@ class ReadingSettings {
     quietControls: quietControls ?? this.quietControls,
     keepScreenAwake: keepScreenAwake ?? this.keepScreenAwake,
     rememberLastLight: rememberLastLight ?? this.rememberLastLight,
+    dailyWordReminder: dailyWordReminder ?? this.dailyWordReminder,
+    samSamEnabled: samSamEnabled ?? this.samSamEnabled,
+    samSamScale: samSamScale ?? this.samSamScale,
     defaultVersionId: defaultVersionId ?? this.defaultVersionId,
     loaded: loaded ?? this.loaded,
   );
@@ -90,8 +106,8 @@ class SettingsController extends StateNotifier<ReadingSettings> {
                       ? VeralumeTheme.midnight.index
                       : VeralumeTheme.royalPurple.index))
               .clamp(0, VeralumeTheme.values.length - 1)],
-      fontSize: p.getDouble('fontSize') ?? 19,
-      lineHeight: p.getDouble('lineHeight') ?? 1.65,
+      fontSize: p.getDouble('fontSize') ?? 20,
+      lineHeight: p.getDouble('lineHeight') ?? 1.7,
       serif: p.getBool('serif') ?? true,
       showVerseNumbers: p.getBool('verseNumbers') ?? true,
       boldVerseNumbers: p.getBool('boldVerseNumbers') ?? true,
@@ -103,6 +119,9 @@ class SettingsController extends StateNotifier<ReadingSettings> {
       quietControls: p.getString('quietControls') ?? 'tap',
       keepScreenAwake: p.getBool('keepScreenAwake') ?? false,
       rememberLastLight: p.getBool('rememberLastLight') ?? true,
+      dailyWordReminder: p.getBool('dailyWordReminder') ?? false,
+      samSamEnabled: p.getBool('samSamEnabled') ?? true,
+      samSamScale: (p.getDouble('samSamScale') ?? .4).clamp(.25, 1.35),
       defaultVersionId: p.getInt('defaultVersionId') ?? 1,
       loaded: true,
     );
@@ -126,6 +145,9 @@ class SettingsController extends StateNotifier<ReadingSettings> {
       p.setString('quietControls', value.quietControls),
       p.setBool('keepScreenAwake', value.keepScreenAwake),
       p.setBool('rememberLastLight', value.rememberLastLight),
+      p.setBool('dailyWordReminder', value.dailyWordReminder),
+      p.setBool('samSamEnabled', value.samSamEnabled),
+      p.setDouble('samSamScale', value.samSamScale),
       p.setInt('defaultVersionId', value.defaultVersionId),
     ]);
   }
