@@ -48,7 +48,12 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: WhatsNewScreen()));
 
     expect(find.text('VERALUME 1.5.4 • FAITH OVER FEAR'), findsOneWidget);
-    expect(find.text('Sam-Sam 2.0'), findsOneWidget);
+    expect(find.text('Sam-Sam · connected conversations'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Daily Devotional'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text('Daily Devotional'), findsOneWidget);
     await tester.scrollUntilVisible(
       find.text('Prayer Journal'),
